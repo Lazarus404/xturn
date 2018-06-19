@@ -1,0 +1,292 @@
+###----------------------------------------------------------------------
+###
+### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+###
+### All rights reserved.
+###
+### Redistribution and use in source and binary forms, with or without modification,
+### are permitted provided that the following conditions are met:
+###
+### * Redistributions of source code must retain the above copyright notice, this
+### list of conditions and the following disclaimer.
+### * Redistributions in binary form must reproduce the above copyright notice,
+### this list of conditions and the following disclaimer in the documentation
+### and/or other materials provided with the distribution.
+### * Neither the name of the authors nor the names of its contributors
+### may be used to endorse or promote products derived from this software
+### without specific prior written permission.
+###
+### THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY
+### EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+### WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+### DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
+### DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
+### (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
+### LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
+### ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
+### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+###
+###----------------------------------------------------------------------
+
+defmodule Xirsys.Sockets.TCP_Client do
+  @moduledoc """
+  TCP protocol socket client for STUN connections
+  """
+  use GenServer
+  require Logger
+  @vsn "0"
+
+  alias Xirsys.Turn.Conn
+
+  #####
+  # External API
+
+  @doc """
+  Standard OTP module startup
+  """
+  def start_link(socket, callback, ssl) do
+    GenServer.start_link(__MODULE__, [socket, callback, ssl])
+  end
+
+  def create(socket, callback, ssl) do
+    Xirsys.Sockets.TCP_Supervisor.start_child(socket, callback, ssl)
+  end
+
+  def init([socket, callback, ssl]) do
+    Logger.debug "Client init"
+    {:ok, %{callback: callback, accepted: false, list_socket: socket, cli_socket: nil, addr: nil, turn_msg_buffer: <<>>, ssl: ssl}, 0}
+  end
+
+  @doc """
+  Asynchronous socket response handler
+  """
+  def handle_cast({msg, ip, port}, %{cli_socket: socket} = state) do
+    # Select proper client
+    Logger.debug "Dispatching TCP to #{inspect ip}:#{inspect port} | #{inspect byte_size(msg)} bytes"
+    send_msg(socket, msg)
+    {:noreply, state}
+  end
+  def handle_cast(:stop, state),
+    do: {:stop, :normal, state}
+  def handle_cast(other, state) do
+    Logger.debug "TCP client: strange cast: #{inspect other}"
+    {:noreply, state}
+  end
+
+  def handle_call(other, _from, state) do
+    Logger.debug "TCP client: strange call: #{inspect other}"
+    {:noreply, state}
+  end
+
+  def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
+    Logger.debug "TCP call on handle_info"
+    {:ok, cli_socket} = :ssl.transport_accept(list_socket)
+    case :ssl.ssl_accept(cli_socket) do
+      :ok ->
+        Logger.debug "Client ssl accept"
+        create(list_socket, cb, state.ssl)
+        case set_sockopt(list_socket, cli_socket) do
+          :ok -> :ok
+          {:error, reason} -> exit({:set_sockopt, reason})
+        end
+        :ssl.setopts(cli_socket, [{:active, :once}, :binary])
+        {:ok, client_ip_port} = :ssl.peername(cli_socket)
+        {:ok, server_ip_port} = :ssl.sockname(cli_socket)
+        {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
+      {:error, reason} ->
+        Logger.debug "Client ssl accept error"
+        :erlang.display(reason)
+        {:stop, :normal, state}
+    end
+  end
+  def handle_info(:timeout, %{list_socket: list_socket, callback: cb} = state) do
+    Logger.debug "handle_info timeout #{inspect cb}"
+    {:ok, cli_socket} = :gen_tcp.accept(list_socket)
+    Logger.debug "#{inspect list_socket}"
+    create(list_socket, cb, false)
+    case set_sockopt(list_socket, cli_socket) do
+      :ok ->:ok
+      {:error, reason} -> exit({:set_sockopt, reason})
+    end
+    :inet.setopts(cli_socket, [{:active, :once}, :binary])
+    {:ok, client_ip_port} = :inet.peername(cli_socket)
+    {:ok, server_ip_port} = :inet.sockname(cli_socket)
+    Logger.debug "returning from timeout"
+    {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
+  end
+
+  @doc """
+  Message handler for incoming STUN packets
+  """
+  def handle_info({:ssl, client, data}, state) do
+    Logger.debug "handle_info ssl"
+    {:ok, ip_port} = :ssl.peername(client)
+    Logger.debug "TLS called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
+    return = handle_tcp_data(data, state)
+    :ssl.setopts(client, [{:active, :once}, :binary])
+    return
+  end
+  def handle_info({:tcp, client, data}, state) do
+    Logger.debug "handle_info tcp"
+    {:ok, ip_port} = :inet.peername(client)
+    Logger.debug "TCP called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
+    return = handle_tcp_data(data, state)
+    :inet.setopts(client, [{:active, :once}, :binary])
+    return
+  end
+  def handle_info({:ssl_closed, client}, state) do
+    Logger.debug "Client #{inspect client} closed connection"
+    {:stop, :normal, state}
+  end
+  def handle_info({:tcp_closed, client}, state) do
+    Logger.debug "Client #{inspect client} closed connection"
+    {:stop, :normal, state}
+  end
+  def handle_info(info, state) do
+    Logger.debug "TCP client: strange info: #{inspect info}"
+    {:noreply, state}
+  end
+
+  def terminate(reason, %{cli_socket: socket, list_socket: list_socket, callback: cb, accepted: false, ssl: ssl} = _state) do
+    create(list_socket, cb, ssl)
+    close(socket)
+    Logger.debug "TCP client closed: #{reason}"
+    :ok
+  end
+  def terminate(reason, %{cli_socket: socket} = _state) do
+    close(socket)
+    Logger.debug "TCP client closed: #{reason}"
+    :ok
+  end
+
+  def code_change(_old_vsn, state, _extra) do
+    {:ok, state}
+  end
+
+  @doc """
+  Apply specific socket option for STUN connection
+  """
+  def set_sockopt(list_sock, cli_socket) do
+    true = :inet_db.register_socket(cli_socket, :inet_tcp)
+    try do
+      {:ok, opts} = :prim_inet.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
+      :prim_inet.setopts(cli_socket, opts)
+      :ok
+    rescue
+      e ->
+        Logger.error "damn #{inspect e}"
+        close(cli_socket)
+    end
+  end
+
+  def handle_tcp_data(data, %{:turn_msg_buffer => msg, :addr => {{cip, cport}, {sip, sport}}} = state) do
+    nbinary = <<msg::binary, data::binary>>
+    bin_bytes = byte_size(nbinary)
+    cond do
+      bin_bytes < 4  ->
+        {:noreply, %{state | :turn_msg_buffer => nbinary}}
+      bin_bytes == 4 ->
+        {:noreply, %{state | :turn_msg_buffer => nbinary}}
+      true ->
+        case nbinary do
+          <<1::2, _::14, body_bytes::16, _body::binary-size(body_bytes), _::binary>> ->
+            # channel data message
+            padded_body_bytes = roundup_to_4(body_bytes)
+            msg_bytes = cond do
+              rem(body_bytes, 4) == 0 ->
+                padded_body_bytes
+              true ->
+                padded_body_bytes + 4
+            end
+            Logger.debug "ChannelData with length #{inspect body_bytes}:#{inspect bin_bytes}"
+            cond do
+              msg_bytes > bin_bytes ->
+                # need more data for a ChannelData message
+                {:noreply, %{state | :turn_msg_buffer => nbinary}}
+              msg_bytes == bin_bytes ->
+                process_msg(state.callback, nbinary, {self(), cip, cport, sip, sport})
+                {:noreply, %{state | :turn_msg_buffer => <<>>}}
+              true ->
+                # ONE channel data message + tail
+                <<turn::binary-size(msg_bytes), tail::binary>> = nbinary
+                process_msg(state.callback, turn, {self(), cip, cport, sip, sport})
+                handle_tcp_data(<<>>, %{state | :turn_msg_buffer => tail})
+            end
+          <<1::2, _::14, _body_bytes::16, _::binary>> -> # message is not yet long enough
+            {:noreply, %{state | :turn_msg_buffer => nbinary}}
+
+          <<0::2, _::14, body_bytes::16, _body::binary-size(body_bytes), _::binary>> ->
+            padded_msg_bytes = body_bytes + 20
+            Logger.debug "padded_msg_bytes::bin_bytes -> #{inspect padded_msg_bytes}, #{inspect bin_bytes}"
+            cond do
+              padded_msg_bytes > bin_bytes  ->
+                # need more data
+                {:noreply, %{state | :turn_msg_buffer => nbinary}}
+              padded_msg_bytes == bin_bytes ->
+                process_msg(state.callback, nbinary, {self(), cip, cport, sip, sport})
+                {:noreply, %{state | :turn_msg_buffer => <<>>}}
+              true ->
+                # parse TURN message
+                <<turn::binary-size(padded_msg_bytes), tail::binary>> = nbinary
+                Logger.debug "Tail is: #{inspect tail}"
+                #ns = process_turn_msg(turn, %{state | turn_msg_buffer: bin})
+                process_msg(state.callback, turn, {self(), cip, cport, sip, sport})
+                handle_tcp_data(<<>>, %{state | :turn_msg_buffer => tail})
+            end
+          <<0::2, _::14, _body_bytes::16, _::binary>> -> # message is not yet long enough
+            {:noreply, %{state | :turn_msg_buffer => nbinary}}
+
+          <<type::2, _::14, _::binary>> ->
+            Logger.error "Unknown message type : #{inspect type}"
+            {:noreply, %{state | :turn_msg_buffer => nbinary}}
+        end
+    end
+  end
+
+  def roundup_to_4(num) do
+    pad = rem(num, 4)
+    num+(4-pad)
+  end
+
+  def get_first_msg(stun_binary) do
+    try do
+      <<_::16, len::16, _::128, _::binary>> = stun_binary
+      Logger.debug "get_first_msg = #{inspect len} of #{inspect byte_size(stun_binary)}"
+      msg_len = 160 + (8 * len)
+      <<msg::size(msg_len), tail::binary>> = stun_binary
+      {:ok, msg, tail}
+    rescue
+      _ ->
+        {:error, :unparsed}
+    end
+  end
+
+  def process_msg(cb, msg, {listener, fip, fport, tip, tport}) do
+    apply cb, :process_message, [%Conn{
+        message: msg,
+        listener: listener,
+        client_ip: fip,
+        client_port: fport,
+        server_ip: tip,
+        server_port: tport
+      }]
+  end
+
+  def send_msg({:sslsocket, _, _} = socket, msg) do
+    :ssl.send(socket, msg)
+  end
+  def send_msg(socket, msg) do
+    :gen_tcp.send(socket, msg)
+  end
+
+  def close(nil) do
+    Logger.error "Caught attempted close of nil socket"
+  end
+  def close({:sslsocket, _, _} = socket) do
+    :ssl.close(socket)
+  end
+  def close(socket) when socket != nil do
+    :gen_tcp.close(socket)
+  end
+end
