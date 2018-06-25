@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###

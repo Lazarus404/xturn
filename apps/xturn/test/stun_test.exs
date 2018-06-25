@@ -31,11 +31,11 @@ defmodule StunTest do
     conn = Parse.process_message(%Conn{@conn | message: stun})
     assert conn.response.class == :success,
       "STUN request should be valid"
-    assert :proplists.get_value(:"XOR-MAPPED-ADDRESS", conn.response.attrs || []) == {@conn.client_ip, @conn.client_port},
+    assert Map.get(conn.response.attrs || %{}, :xor_mapped_address) == {@conn.client_ip, @conn.client_port},
       "must return a xor-mapped-address"
-    assert :proplists.get_value(:"MAPPED-ADDRESS", conn.response.attrs || []) == {@conn.client_ip, @conn.client_port},
+    assert Map.get(conn.response.attrs || %{}, :mapped_address) == {@conn.client_ip, @conn.client_port},
       "must return a mapped-address"
-    assert :proplists.get_value(:"RESPONSE-ORIGIN", conn.response.attrs || []) == {@conn.server_ip, @conn.server_port},
+    assert Map.get(conn.response.attrs || %{}, :response_origin) == {@conn.server_ip, @conn.server_port},
       "must return a response-origin"
   end
 

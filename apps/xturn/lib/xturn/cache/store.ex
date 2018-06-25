@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###
@@ -52,13 +52,13 @@ defmodule Xirsys.Turn.Cache.Store do
           true ->
             {:ok, {t, d}} = Map.fetch(store, id)
             :timer.cancel(t)
-            d
+            if ndata, do: ndata, else: d
           _ ->
             ndata
         end
         Map.put(store, id, {tref, data})
       _ ->
-        Map.put(store, id, ndata)
+        Map.put(store, id, {nil, ndata})
     end
     update_store(agent, new_store)
     :ok
@@ -71,13 +71,6 @@ defmodule Xirsys.Turn.Cache.Store do
     append_items_to_store(agent, tail)
   end
 
-  def start_item_timer(agent, lt, id),
-    do: :timer.apply_interval(lt, __MODULE__, :timer_callback, [agent, id])
-  def start_item_timer(agent, lt, id, tref) do
-    :timer.cancel(tref)
-    start_item_timer(agent, lt, id)
-  end
-
   def remove_item_from_store(agent, id) do
     {store, _, _} = get_state(agent)
     new_store = Map.delete(store, id)
@@ -85,34 +78,14 @@ defmodule Xirsys.Turn.Cache.Store do
     :ok
   end
 
-  def timer_callback(agent, id) do
-    {store, _, cb} = get_state(agent)
-    Logger.info "Deleting item #{inspect id}"
-    new_store = Map.delete(store, id)
-    update_store(agent, new_store)
-    if cb != nil, do: apply(cb, [id])
-    :ok
-  end
-
   def has_key?(agent, id) do
     {store, _, _} = get_state(agent)
-    Logger.debug "store: #{inspect agent} == #{inspect store}"
     Map.has_key?(store, id)
   end
 
   def keys(agent) do
     {store, _, _} = get_state(agent)
     Map.keys(store)
-  end
-
-  def fetch(agent, id) do
-    {store, _, _} = get_state(agent)
-    case Map.fetch(store, id) do
-      {:ok, {_t, d}} ->
-        {:ok, d}
-      _ ->
-        :error
-    end
   end
 
   def get_item_count(agent) do
@@ -125,6 +98,28 @@ defmodule Xirsys.Turn.Cache.Store do
 
   def get_state(agent),
     do: Agent.get(agent, fn {s,l,c} -> {s,l,c} end)
+
+  def timer_callback(agent, id) do
+    {store, _, cb} = get_state(agent)
+    Logger.info "Deleting item #{inspect id}"
+    new_store = Map.delete(store, id)
+    update_store(agent, new_store)
+    if cb != nil, do: apply(cb, [id])
+    :ok
+  end
+
+  def fetch(agent, id) do
+    {store, _, _} = get_state(agent)
+    case Map.fetch(store, id) do
+      {:ok, {_t, d}} ->
+        {:ok, d}
+      _ ->
+        :error
+    end
+  end
+
+  defp start_item_timer(agent, lt, id),
+    do: :timer.apply_interval(lt, __MODULE__, :timer_callback, [agent, id])
 
   defp update_store(agent, store),
     do: Agent.update(agent, fn {_,l,c} -> {store,l,c} end)

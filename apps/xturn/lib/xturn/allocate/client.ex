@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###
@@ -100,7 +100,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def set_relay_address(pid, relay_address),
     do: GenServer.cast(pid, {:relay_address, relay_address})
 
-  def add_permissions(pid, perms) when is_list(perms),
+  def add_permissions(pid, perms) when is_tuple(perms),
     do: GenServer.cast(pid, {:add_permissions, perms})
 
   def add_peer_channel(pid, channel_number, peer_address),
@@ -171,9 +171,9 @@ defmodule Xirsys.Turn.Allocate.Client do
           Logger.debug "sending #{inspect byte_size(chan_packet)} bytes (with header) to client"
           chan_packet
         _ ->
-          attrs = []
-          tmp_attrs = Map.put(attrs, :"XOR-PEER-ADDRESS", {ip, in_port})
-          data_attrs = Map.put(tmp_attrs, :"DATA", packet)
+          attrs = %{}
+          tmp_attrs = Map.put(attrs, :xor_peer_address, {ip, in_port})
+          data_attrs = Map.put(tmp_attrs, :data, packet)
           <<tid::96>> = :crypto.strong_rand_bytes(12)
           conn = %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: data_attrs}
           Stun.encode(conn)
@@ -221,9 +221,9 @@ defmodule Xirsys.Turn.Allocate.Client do
     {:reply, :ok, state, milliseconds_left(state)}
   end
 
-  def handle_cast({:add_permissions, perms}, state) do
-    Logger.debug "adding permissions #{inspect state.permissions} #{inspect perms} #{inspect state.tuple5}"
-    Xirsys.Turn.Cache.Store.append_items_to_store(state.permissions, perms)
+  def handle_cast({:add_permissions, perm}, state) do
+    Logger.debug "adding permissions #{inspect state.permissions} #{inspect perm} #{inspect state.tuple5}"
+    Xirsys.Turn.Cache.Store.append_item_to_store(state.permissions, perm)
     {:noreply, state, milliseconds_left(state)}
   end
   def handle_cast({:relay_address, relay_address}, state),

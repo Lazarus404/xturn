@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###
@@ -55,49 +55,17 @@ defmodule Xirsys.Sockets.TCP_Listener do
   @doc """
   Initialises connection with IPv6 address
   """
-  def init([cb, {i0, i1, i2, i3, i4, i5, i6, i7} = ipv6, port, ssl]) when
-    is_integer(i0) and i0 >= 0 and i0 < 65535 and
-    is_integer(i1) and i1 >= 0 and i1 < 65535 and
-    is_integer(i2) and i2 >= 0 and i2 < 65535 and
-    is_integer(i3) and i3 >= 0 and i3 < 65535 and
-    is_integer(i4) and i4 >= 0 and i4 < 65535 and
-    is_integer(i5) and i5 >= 0 and i5 < 65535 and
-    is_integer(i6) and i6 >= 0 and i6 < 65535 and
-    is_integer(i7) and i7 >= 0 and i7 < 65535 do
-    opts = [{:ip, ipv6}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:active, false}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, :inet6]
-    {:ok, socket} = case ssl do
-      true ->
-        {:ok, certs} = :application.get_env(:certs)
-        nopts = opts ++ certs
-        :ssl.listen(port, nopts)
-      _ ->
-        :gen_tcp.listen(port, opts)
-    end
-    Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
-    Logger.info "TCP listener started at [#{:inet_parse.ntoa(ipv6)}:#{port}]"
-    {:ok, %{:listener => socket}}
+  def init([cb, {_, _, _, _, _, _, _, _} = ip, port, ssl]) do
+    opts = [{:ip, ip}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:active, false}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, :inet6]
+    open_socket(cb, ip, port, ssl, opts)
   end
 
   @doc """
   Initialises connection with IPv4 address
   """
-  def init([cb, {i0, i1, i2, i3} = ipv4, port, ssl]) when
-    is_integer(i0) and i0 >= 0 and i0 < 256 and
-    is_integer(i1) and i1 >= 0 and i1 < 256 and
-    is_integer(i2) and i2 >= 0 and i2 < 256 and
-    is_integer(i3) and i3 >= 0 and i3 < 256 do
-    opts = [{:ip, ipv4}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, {:active, false}]
-    {:ok, socket} = case ssl do
-      true ->
-        {:ok, certs} = :application.get_env(:certs)
-        nopts = opts ++ certs
-        :ssl.listen(port, nopts)
-      _ ->
-        :gen_tcp.listen(port, opts)
-    end
-    Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
-    Logger.info "TCP listener started at [#{:inet_parse.ntoa(ipv4)}:#{port}]"
-    {:ok, %{:listener => socket}}
+  def init([cb, {_, _, _, _} = ip, port, ssl]) do
+    opts = [{:ip, ip}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, {:active, false}]
+    open_socket(cb, ip, port, ssl, opts)
   end
 
   def handle_cast(:stop, state) do
@@ -105,7 +73,6 @@ defmodule Xirsys.Sockets.TCP_Listener do
   end
 
   def terminate(reason, %{:listener => listener} = _state) do
-    :erlang.display(reason)
     Logger.debug "TCP listener: terminating"
     :gen_tcp.close(listener)
     Logger.debug "TCP listener closed: #{reason}"
@@ -115,4 +82,25 @@ defmodule Xirsys.Sockets.TCP_Listener do
   def code_change(_old_vsn, state, _extra) do
     {:ok, state}
   end
+
+  defp open_socket(cb, ip, port, ssl, opts) do
+    with true <- valid_ip?(ip) do
+      {:ok, socket} = case ssl do
+        true ->
+          {:ok, certs} = :application.get_env(:certs)
+          nopts = opts ++ certs
+          :ssl.listen(port, nopts)
+        _ ->
+          :gen_tcp.listen(port, opts)
+      end
+      Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
+      Logger.info "TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]"
+      {:ok, %{:listener => socket}}
+    else
+      _ -> {:error, :invalid_ip_address}
+    end
+  end
+
+  defp valid_ip?(ip),
+    do: Enum.reduce(Tuple.to_list(ip), true, &(is_integer(&1) and &1 >= 0 and &1 < 65535 and &2))
 end

@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###
@@ -63,7 +63,7 @@ defmodule Xirsys.Turn.Parse do
   def process_message(%Conn{message: <<@stun_marker::2, _::14, _rest::binary>> = msg} = conn) do
     Logger.debug "TURN Data received"
     {:ok, turn} = Stun.decode(msg)
-    do_request(%Conn{conn | decoded_message: turn}) |> Response.send
+    do_request(%Conn{conn | decoded_message: turn}) |> Response.send()
   end
 
   @doc """
@@ -97,11 +97,11 @@ defmodule Xirsys.Turn.Parse do
   @spec do_request(Conn.t) :: Conn.t | false
   def do_request(%Conn{decoded_message: %Stun{class: :request, method: :binding}} = conn) do
     Logger.debug "STUN request from client at ip:#{inspect conn.client_ip}, port:#{inspect conn.client_port} with ip:#{inspect conn.server_ip}, port:#{inspect conn.server_port}"
-    attrs = [
-              {:"XOR-MAPPED-ADDRESS", {conn.client_ip, conn.client_port}},
-              {:"MAPPED-ADDRESS", {conn.client_ip, conn.client_port}},
-              {:"RESPONSE-ORIGIN", {conn.server_ip, conn.server_port}}
-            ]
+    attrs = %{
+              xor_mapped_address: {conn.client_ip, conn.client_port},
+              mapped_address: {conn.client_ip, conn.client_port},
+              response_origin: {conn.server_ip, conn.server_port}
+            }
     Conn.response(conn, :success, attrs)
   end
   def do_request(%Conn{decoded_message: %Stun{class: :request, method: :allocate}} = conn) do
@@ -144,8 +144,8 @@ defmodule Xirsys.Turn.Parse do
   # Validates the presence of the REQUESTED-TRANSPORT tag, which is
   # necessary for all TURN allocations (even if ignored)
   defp action(:has_requested_transport, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    with true <- Map.has_key?(attrs, :"REQUESTED-TRANSPORT"),
-         @udp_proto <- Map.get(attrs, :"REQUESTED-TRANSPORT") do
+    with true <- Map.has_key?(attrs, :requested_transport),
+         @udp_proto <- Map.get(attrs, :requested_transport) do
       conn
     else
       false ->
@@ -161,7 +161,7 @@ defmodule Xirsys.Turn.Parse do
   # then this is a duplicate allocation request and can be safely
   # ignored.
   defp action(:not_allocation_exists, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, conn.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :"REQUESTED-TRANSPORT")}]
+    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, conn.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
     with false <- Store.exists(tup5) do
       conn
     else
@@ -171,10 +171,10 @@ defmodule Xirsys.Turn.Parse do
         {:ok, [_client, {_ip, port}, _, _]} = Store.lookup(tup5)
         Logger.debug "#{inspect port}"
         nattrs = [
-          #{:"RESERVATION-TOKEN", <<0::64>>},
-          {:"XOR-MAPPED-ADDRESS", {conn.client_ip, conn.client_port}},
-          {:"XOR-RELAYED-ADDRESS", {conn.server_ip, port}},
-          {:"LIFETIME", <<600::32>>}
+          #{:reservation_token, <<0::64>>},
+          {:xor_mapped_address, {conn.client_ip, conn.client_port}},
+          {:xor_relayed_address, {conn.server_ip, port}},
+          {:lifetime, <<600::32>>}
         ]
         Logger.debug "integrity = #{conn.decoded_message.integrity}"
         Logger.debug "Allocated"
@@ -188,8 +188,8 @@ defmodule Xirsys.Turn.Parse do
   # is at XirSys discretion (Enterprise, anyone?)
   defp action(:authenticates, %Conn{force_auth: force_auth, message: message, decoded_message: %Stun{attrs: attrs}} = conn) do
     auth = Application.get_env(:xturn, :authentication)
-    with true <- Map.has_key?(attrs, :"USERNAME") and (auth.required or force_auth),
-         %Stun{} = turn_dec <- process_integrity(message, Map.get(attrs, :"USERNAME")) do
+    with true <- Map.has_key?(attrs, :username) and (auth.required or force_auth),
+         %Stun{} = turn_dec <- process_integrity(message, Map.get(attrs, :username)) do
       %Conn{conn | decoded_message: turn_dec}
     else
       _ ->
@@ -204,8 +204,8 @@ defmodule Xirsys.Turn.Parse do
   # send/receive or channels.
   defp action(:allocate, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
     Logger.debug "allocating #{inspect conn.decoded_message}"
-    proto = Map.get(attrs, :"REQUESTED-TRANSPORT")
-    opts = if Map.has_key?(attrs, :"DONT-FRAGMENT") and proto != @tcp_proto,
+    proto = Map.get(attrs, :requested_transport)
+    opts = if Map.has_key?(attrs, :dont_fragment) and proto != @tcp_proto,
               do: [{:raw,0,10,<<2::native-size(32)>>}],
             else: []
     tuple5 = Tuple5.create(conn, proto)
@@ -217,12 +217,12 @@ defmodule Xirsys.Turn.Parse do
     relay_address = {conn.server_ip, port}
     AllocateClient.set_relay_address(pid, relay_address)
     Store.insert(conn.decoded_message.transactionid, pid, relay_address, tuple5, socket, permission_cache)
-    nattrs = [
-      #{:"RESERVATION-TOKEN", <<0::64>>},
-      {:"XOR-MAPPED-ADDRESS", {conn.client_ip, conn.client_port}},
-      {:"XOR-RELAYED-ADDRESS", {conn.server_ip, port}},
-      {:"LIFETIME", <<600::32>>}
-    ]
+    nattrs = %{
+      # reservation_token: <<0::64>>,
+      xor_mapped_address: {conn.client_ip, conn.client_port},
+      xor_relayed_address: {conn.server_ip, port},
+      lifetime: <<600::32>>
+    }
     Logger.debug "integrity = #{conn.decoded_message.integrity}"
     #turn2 = %Stun{conn.decoded_message | integrity: :true}
     Logger.debug "Allocated"
@@ -232,8 +232,8 @@ defmodule Xirsys.Turn.Parse do
   # Updates an allocations current expiry to its maximum set lifetime value
   defp action(:refresh, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
     Logger.debug "refreshing #{inspect conn.decoded_message}"
-    with true <- Map.has_key?(attrs, :"LIFETIME"),
-         val <- Map.get(attrs, :"LIFETIME"),
+    with true <- Map.has_key?(attrs, :lifetime),
+         val <- Map.get(attrs, :lifetime),
          tuple5 <-Tuple5.to_map(Tuple5.create(conn, :"_")) do
       do_refresh(conn, val, tuple5)
     else
@@ -246,9 +246,9 @@ defmodule Xirsys.Turn.Parse do
   # Channel binds a peer to a given client allocation
   defp action(:channelbind, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
     Logger.debug "channelbinding #{inspect conn.decoded_message}"
-    with true <- Map.has_key?(attrs, :"CHANNEL-NUMBER") and Map.has_key?(attrs, :"XOR-PEER-ADDRESS"),
-         <<channel_number::16, _::16>> <- Map.get(attrs, :"CHANNEL-NUMBER"),
-         peer_address = {_, _} <- Map.get(attrs, :"XOR-PEER-ADDRESS"),
+    with true <- Map.has_key?(attrs, :channel_number) and Map.has_key?(attrs, :xor_peer_address),
+         <<channel_number::16, _::16>> <- Map.get(attrs, :channel_number),
+         peer_address = {_, _} <- Map.get(attrs, :xor_peer_address),
          tuple5 <- Tuple5.to_map(Tuple5.create(conn, :"_")) do
       Logger.debug "#{Channels.exists({channel_number, tuple5})}, #{Channels.exists({peer_address, tuple5})} = #{inspect channel_number}"
       exists = Channels.exists({channel_number, tuple5})
@@ -265,7 +265,7 @@ defmodule Xirsys.Turn.Parse do
   defp action(:createperm, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
     Logger.debug "creating a permission #{inspect conn.decoded_message}"
     tuple5 = Tuple5.to_map(Tuple5.create(conn, :"_"))
-    with p when is_list(p) and length(p) > 0 <- Map.get(attrs, :"XOR-PEER-ADDRESS"),
+    with {_ip, _port} = p <- Map.get(attrs, :xor_peer_address),
          {:ok, [client, _peer_address, _, _]} <- Store.lookup(tuple5) do
       Logger.debug "createperm #{inspect client}, #{inspect p}"
       AllocateClient.add_permissions(client, p)
@@ -288,9 +288,9 @@ defmodule Xirsys.Turn.Parse do
   defp action(:send_indication, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
     Logger.debug "send indication #{inspect conn.decoded_message}"
     tuple5 = Tuple5.to_map(Tuple5.create(conn, :"_"))
-    with true <- Map.has_key?(attrs, :"DATA") and Map.has_key?(attrs, :"XOR-PEER-ADDRESS"),
-         data <- Map.get(attrs, :"DATA"),
-         peer_address = {_, _} <- Map.get(attrs, :"XOR-PEER-ADDRESS"),
+    with true <- Map.has_key?(attrs, :data) and Map.has_key?(attrs, :xor_peer_address),
+         data <- Map.get(attrs, :data),
+         peer_address = {_, _} <- Map.get(attrs, :xor_peer_address),
          {:ok, [client, {_relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
       Logger.debug "sending indication to peer"
       AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
@@ -368,7 +368,7 @@ defmodule Xirsys.Turn.Parse do
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
         AllocateClient.refresh(client, 600)
-        new_attrs = [{:"LIFETIME", <<600::32>>}]
+        new_attrs = %{lifetime: <<600::32>>}
         Conn.response(conn, :success, new_attrs)
       {:error, :not_found} ->
         Conn.response(conn, 437, "Allocation Mismatch")

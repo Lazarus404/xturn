@@ -157,7 +157,7 @@ defmodule Xirsys.Rtcp do
   defmodule Alfb do
     defstruct ssrc_s: nil, ssrc_m: nil, data: nil
   end
-  
+
   # IEEE 1733 AVB
   defmodule Avb do
     defstruct ssrc: nil, name: nil, gmtbi: nil, gmid: nil, sid: nil, astime: nil, rtptime: nil
@@ -232,7 +232,7 @@ defmodule Xirsys.Rtcp do
   # SMPTE Time-Codes (short form)
   def decode(<<@rtcp_version::size(2), padding_flag::size(1), _mbz::size(5), @rtcp_smptetc::size(8), 3::size(16), ssrc::size(32), timestamp::size(32), s::size(1), hours::size(5), minutes::size(6), seconds::size(6), frames::size(6), 0::size(8), tail::binary>>, decoded_rtcps), do:
     decode(tail, decoded_rtcps ++ [%Smptetc{ssrc: ssrc, timestamp: timestamp, sign: s, hours: hours, minutes: minutes, seconds: seconds, frames: frames}])
-  
+
   # SMPTE Time-Codes (long form)
   def decode(<<@rtcp_version::size(2), padding_flag::size(1), _mbz::size(5), @rtcp_smptetc::size(8), 4::size(16), ssrc::size(32), timestamp::size(32), smpte12m::size(64), tail::binary>>, decoded_rtcps), do:
     decode(tail, decoded_rtcps ++ [%Smptetc{ssrc: ssrc, timestamp: timestamp, smpte12m: smpte12m}])
@@ -444,33 +444,33 @@ defmodule Xirsys.Rtcp do
   # arbitrary padding inserted):
   def decode_sdes_item(<<@sdes_cname::size(8), 19::size(8), _arbitrary_padding::size(16), "AddPac VoIP Gateway", tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [cname: "AddPac VoIP Gateway"])
-  
+
   def decode_sdes_item(<<@sdes_cname::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [cname: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_name::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [name: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_email::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [email: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_phone::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [phone: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_loc::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [loc: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_tool::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [tool: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_note::size(8), l::size(8), v::binary-size(l), tail::binary>>, items), do:
     decode_sdes_item(tail, items ++ [note: to_char_list(v)])
-  
+
   def decode_sdes_item(<<@sdes_priv::size(8), l::size(8), v::binary-size(l), tail::binary>>, items) do
     <<pl::size(8),  pd::binary-size(pl), rest::binary>> = v
     decode_sdes_item(tail, items ++ [priv: {to_char_list(pd), rest}])
   end
-  
+
   def decode_sdes_item(<<@sdes_null::size(8), tail::binary>>, items) do
     # This is NULL terminator
     # Let's calculate how many bits we need to skip (padding up to 32-bit
@@ -719,7 +719,7 @@ defmodule Xirsys.Rtcp do
     <<sdes_type::size(8), l::size(8), value::binary-size(l)>>
   end
 
-  def encode_xrblocks(xrblocks) when is_list(xrblocks), do: 
+  def encode_xrblocks(xrblocks) when is_list(xrblocks), do:
     (for <<xrblock <- xrblocks>>, into: "", do: <<(encode_xrblock(xrblock))::binary>>)
 
   def encode_xrblock(%Xrblock{type: bt, ts: ts, data: data}), do: encode_xrblock(bt, ts,  data)

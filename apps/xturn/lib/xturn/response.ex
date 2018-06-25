@@ -1,6 +1,6 @@
 ###----------------------------------------------------------------------
 ###
-### Copyright (c) 2014 Lee Sylvester <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
 ### All rights reserved.
 ###
@@ -55,10 +55,14 @@ defmodule Xirsys.Turn.Response do
   """
   @spec send(Conn) :: :ok
   def send(%Conn{response: %Response{err_no: err, message: msg}} = conn) when is_integer(err) do
-    build_response(conn, err, msg) |> respond
+    conn
+    |> build_response(err, msg)
+    |> respond()
   end
   def send(%Conn{response: %Response{class: cls, attrs: attrs}} = conn) when is_atom(cls) do
-    build_response(conn, cls, attrs) |> respond
+    conn
+    |> build_response(cls, attrs)
+    |> respond()
   end
   def send(%Conn{} = conn) do
     Logger.info "SEND: #{inspect conn}"
@@ -72,29 +76,30 @@ defmodule Xirsys.Turn.Response do
   @spec build_response(Conn, atom() | Integer, String.t | list()) :: Conn
   defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, class, attrs) when is_atom(class) do
     new_attrs = cond do
-      is_list(attrs) ->
-        attrs ++ [{:"SOFTWARE", @software}]
+      is_map(attrs) ->
+        Map.put(attrs, :software, @software)
       true ->
-        [{:"SOFTWARE", @software}]
+        %{software: @software}
     end
     fingerprint = turn.integrity
     Logger.info "#{inspect new_attrs}"
     %Conn{conn | decoded_message: %Stun{turn | class: class, fingerprint: fingerprint, attrs: new_attrs}}
   end
   defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, err_no, err_msg) when is_integer(err_no) do
-    new_attrs = [
-      {:"ERROR-CODE", {err_no, err_msg}},
-      {:"NONCE", @nonce},
-      {:"REALM", @realm},
-      {:"SOFTWARE", @software}
-    ]
+    new_attrs = %{
+      error_code: {err_no, err_msg},
+      nonce: @nonce,
+      realm: @realm,
+      software: @software
+    }
     %Conn{conn | decoded_message: %Stun{turn | class: :error, attrs: new_attrs}}
   end
 
   @spec respond(Conn) :: :ok
   defp respond(%Conn{decoded_message: %Stun{} = turn} = conn) do
     case conn.listener do
-      nil -> conn
+      nil ->
+        conn
       listener ->
         GenServer.cast(listener, {Stun.encode(turn, turn.key), conn.client_ip, conn.client_port})
         conn

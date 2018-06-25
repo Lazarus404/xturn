@@ -19,9 +19,9 @@ defmodule TurnTest do
     class: :request,
     method: :allocate,
     transactionid: 123456789012,
-    attrs: [
-      {:"REQUESTED-TRANSPORT", <<17, 0, 0, 0>>}
-    ]
+    attrs: %{
+      requested_transport: <<17, 0, 0, 0>>
+    }
   }
   @realm "xirsys.com"
   @username "some_user"
@@ -39,18 +39,18 @@ defmodule TurnTest do
     # response should be valid and contain reflexive IP and Port
     assert conn.response.class == :success,
       "STUN request was successful"
-    assert :proplists.get_value(:"XOR-MAPPED-ADDRESS", conn.response.attrs) == {@conn.client_ip, @conn.client_port},
+    assert Map.get(conn.response.attrs, :xor_mapped_address) == {@conn.client_ip, @conn.client_port},
       "response has valid xor-mapped-address"
-    assert :proplists.is_defined(:"XOR-RELAYED-ADDRESS", conn.response.attrs),
+    assert Map.has_key?(conn.response.attrs, :xor_relayed_address),
       "response has valid xor-relayed-address"
 
     # check an integer base port id is attributed
     ip = @conn.server_ip
-    {^ip, port} = :proplists.get_value(:"XOR-RELAYED-ADDRESS", conn.response.attrs)
+    {^ip, port} = Map.get(conn.response.attrs, :xor_relayed_address)
 
     assert is_integer(port),
       "assigned port is an integer"
-    assert :proplists.get_value(:"LIFETIME", conn.response.attrs) == <<600::32>>,
+    assert Map.get(conn.response.attrs, :lifetime) == <<600::32>>,
       "response contains a five minute TTL"
 
     # assert that we now have one more allocation client
@@ -64,7 +64,7 @@ defmodule TurnTest do
     {:ok, orig_workers} = AllocateClient.count
 
     # as we're authenticating, apply user and pass
-    attrs = @allocation.attrs ++ [{:"USERNAME", @username}, {:"PASSWORD", @password}]
+    attrs = Map.merge(@allocation.attrs, %{username: @username, password: @password})
 
     # create encoded STUN packet
     stun = Stun.encode(%Stun{@allocation | attrs: attrs})
@@ -73,14 +73,14 @@ defmodule TurnTest do
     # the first request should fail, but we need the returned realm to authenticate
     refute conn.response.class == :success,
       "first request must not succeed"
-    assert :proplists.is_defined(:"REALM", conn.decoded_message.attrs || []),
+    assert Map.has_key?(conn.decoded_message.attrs || %{}, :realm),
       "failed authentication should return a realm"
-    realm = :proplists.get_value(:"REALM", conn.decoded_message.attrs)
+    realm = Map.get(conn.decoded_message.attrs, :realm)
     assert realm == @realm,
       "realm should be valid value for this TURN server"
 
     # assign the realm to the attributes for the next pass
-    attrs = attrs ++ [{:"REALM", realm}]
+    attrs = Map.merge(attrs, %{realm: realm})
 
     # re-encode updated data
     stun = Stun.encode(%Stun{@allocation | attrs: attrs})
@@ -93,18 +93,18 @@ defmodule TurnTest do
     # this should now pass and have an established relay address / port
     assert conn.response.class == :success,
       "STUN request was successful"
-    assert :proplists.get_value(:"XOR-MAPPED-ADDRESS", conn.response.attrs) == {@alternate_ip, @conn.client_port},
+    assert Map.get(conn.response.attrs, :xor_mapped_address) == {@alternate_ip, @conn.client_port},
       "response has valid xor-mapped-address"
-    assert :proplists.is_defined(:"XOR-RELAYED-ADDRESS", conn.response.attrs),
+    assert Map.has_key?(conn.response.attrs, :xor_relayed_address),
       "response has valid xor-relayed-address"
 
     # validate an assigned port and that it's an integer
     ip = @conn.server_ip
-    {^ip, port} = :proplists.get_value(:"XOR-RELAYED-ADDRESS", conn.response.attrs)
+    {^ip, port} = Map.get(conn.response.attrs, :xor_relayed_address)
 
     assert is_integer(port),
       "assigned port is an integer"
-    assert :proplists.get_value(:"LIFETIME", conn.response.attrs) == <<600::32>>,
+    assert Map.get(conn.response.attrs, :lifetime) == <<600::32>>,
       "response contains a five minute TTL"
 
     # assert that we now have one more allocation client
