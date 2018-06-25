@@ -37,7 +37,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   require Logger
   @vsn "0"
 
-  alias Xirsys.Utils.TCP, as: Utils
+  alias Xirsys.Utils.Socket, as: Utils
 
   #####
   # External API

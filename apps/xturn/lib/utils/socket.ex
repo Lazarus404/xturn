@@ -29,15 +29,23 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Utils.TCP do
+defmodule Xirsys.Utils.Socket do
   @moduledoc """
-  TCP protocol socket client for STUN connections
+  Socket protocol helpers
   """
   require Logger
   alias Xirsys.Turn.Conn
 
   @channel_msg 1
   @send_msg 0
+
+  @doc """
+  Opens a new port for UDP TURN transport
+  """
+  def open_turn_port({_, _, _, _} = sip, policy, opts) do
+    udp_options = [{:ip, sip}, {:active, :once}, {:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, :binary] ++ opts #[{:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, {:exit_on_close, true}, {:keepalive, true}, {:nodelay, true}, {:packet, :raw}]
+    open_free_udp_port(policy, udp_options)
+  end
 
   @doc """
   With new data, see if we can process a message on the buffer
@@ -95,7 +103,7 @@ defmodule Xirsys.Utils.TCP do
   @doc """
   Calls the callback handler
   """
-  def process_msg(cb, msg, {listener, fip, fport, tip, tport}) do
+  defp process_msg(cb, msg, {listener, fip, fport, tip, tport}) do
     apply cb, :process_message, [%Conn{
         message: msg,
         listener: listener,
@@ -104,5 +112,58 @@ defmodule Xirsys.Utils.TCP do
         server_ip: tip,
         server_port: tport
       }]
+  end
+
+  @doc """
+  Opens an available UDP port as per requirement.
+  See RFC's
+  """
+  defp open_free_udp_port(:random, udp_options) do
+    ## BUGBUG: Should be a random port
+    case :gen_udp.open(0, udp_options) do
+      {:ok, socket} ->
+        {:ok, socket}
+      {:error, reason} ->
+        Logger.error "UDP open #{inspect udp_options} -> #{inspect reason}"
+        {:error, reason}
+      {EXIT, _} = reason ->
+        Logger.error "UDP open #{inspect udp_options} -> #{inspect reason}"
+        {:error, reason}
+    end
+  end
+  defp open_free_udp_port({:range, min_port, max_port}, udp_options) when min_port <= max_port do
+    case :gen_udp.open(min_port, udp_options) do
+      {:ok, socket} ->
+        {:ok, socket}
+      {:error, :eaddrinuse} ->
+        policy2 = {:range, min_port + 1, max_port}
+        open_free_udp_port(policy2, udp_options)
+      {:error, reason} ->
+        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
+        {:error, reason}
+      {EXIT, _} = reason ->
+        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
+        {:error, reason}
+    end
+  end
+  defp open_free_udp_port({:range, _min_port, _max_port}, udp_options) do
+    reason = "Port range exhausted"
+    Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
+    {:error, reason}
+  end
+  defp open_free_udp_port({:preferred, port}, udp_options) do
+    case :gen_udp.open(port, udp_options) do
+      {:ok, socket} ->
+        {:ok, socket}
+      {:error, :eaddrinuse} ->
+        policy2 = :random
+        open_free_udp_port(policy2, udp_options)
+      {:error, reason} ->
+        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
+        {:error, reason}
+      {EXIT, _} = reason ->
+        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
+        {:error, reason}
+    end
   end
 end

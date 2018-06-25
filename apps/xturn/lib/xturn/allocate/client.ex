@@ -45,6 +45,8 @@ defmodule Xirsys.Turn.Allocate.Client do
   alias Xirsys.Turn.Channels.Channel, as: Channel
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
+  alias Xirsys.Utils.Socket, as: SocketHelpers
+  alias Xirsys.Utils.Timing, as: Time
 
   #########################################################################################################################
   # Interface functions
@@ -138,20 +140,18 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   def init([id, listener, tuple5, lifetime]) do
-    now = :calendar.local_time()
-    current_time = :calendar.datetime_to_gregorian_seconds(now)
     {:ok, perms} = Xirsys.Turn.Cache.Store.init(@permission_lifetime)
     {:ok, chans} = Xirsys.Turn.Cache.Store.init(@channel_lifetime, fn id -> Logger.info "CHANNEL #{inspect id} REMOVED" end )
     {:ok, %State{
                   id: id,
                   listener: listener,
                   tuple5: tuple5,
-                  refresh_time: current_time,
+                  refresh_time: Time.now(),
                   lifetime: lifetime,
-                  peer_started: now,
+                  peer_started: Time.local_time(),
                   permissions: perms,
                   channels: chans
-                }, milliseconds_left(current_time, lifetime)}
+                }, Time.milliseconds_left(Time.now(), lifetime)}
   end
 
   def handle_info(:timeout, state),
@@ -186,8 +186,7 @@ defmodule Xirsys.Turn.Allocate.Client do
         0
     end
     :inet.setopts(socket, [{:active, :once}, :binary])
-    #send_data(data, state)
-    {:noreply, %State{state | bytes_in: state.bytes_in + bytes_in}, milliseconds_left(state)}
+    {:noreply, %State{state | bytes_in: state.bytes_in + bytes_in}, Time.milliseconds_left(state)}
   end
 
   def handle_call({:open_port, :random = policy, opts}, from, state),
@@ -197,7 +196,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def handle_call({:open_port, {:range, _min, _max} = policy, opts}, from, state),
     do: open_port_call({policy, opts}, from, state)
   def handle_call(:get_permission_cache, _from, state),
-    do: {:reply, {:ok, state.permissions}, state, milliseconds_left(state)}
+    do: {:reply, {:ok, state.permissions}, state, Time.milliseconds_left(state)}
   def handle_call(:dont_fragment, _from, state),
     do: :inet.setopts(state.relayed_socket,[{:raw,0,10,<<2::native-size(32)>>}])
   def handle_call(:clear_header, _from, state),
@@ -209,41 +208,37 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "ADDING CHANNEL #{inspect channel_number}"
     Channels.insert(channel_number, self(), peer_address, state.tuple5, state.relayed_socket, state.channels)
     Xirsys.Turn.Cache.Store.append_item_to_store(state.channels, {channel_number, channel})
-    {:reply, :ok, state, milliseconds_left(state)}
+    {:reply, :ok, state, Time.milliseconds_left(state)}
   end
   def handle_call({:remove_channel, channel_number}, _from, state) do
     Channels.delete(channel_number)
     Xirsys.Turn.Cache.Store.remove_item_from_store(state.channels, channel_number)
-    {:reply, :ok, state, milliseconds_left(state)}
+    {:reply, :ok, state, Time.milliseconds_left(state)}
   end
   def handle_call({:remove_permission, id}, _from, state) do
     Xirsys.Turn.Cache.Store.remove_item_from_store(state.permissions, id)
-    {:reply, :ok, state, milliseconds_left(state)}
+    {:reply, :ok, state, Time.milliseconds_left(state)}
   end
 
   def handle_cast({:add_permissions, perm}, state) do
     Logger.debug "adding permissions #{inspect state.permissions} #{inspect perm} #{inspect state.tuple5}"
     Xirsys.Turn.Cache.Store.append_item_to_store(state.permissions, perm)
-    {:noreply, state, milliseconds_left(state)}
+    {:noreply, state, Time.milliseconds_left(state)}
   end
   def handle_cast({:relay_address, relay_address}, state),
-    do: {:noreply, %State{state | relayed_address: relay_address}, milliseconds_left(state)}
+    do: {:noreply, %State{state | relayed_address: relay_address}, Time.milliseconds_left(state)}
   def handle_cast({:set_peer_details, ns, peer_id}, state),
-    do: {:noreply, %State{state | ns: ns, peer_id: peer_id}, milliseconds_left(state)}
+    do: {:noreply, %State{state | ns: ns, peer_id: peer_id}, Time.milliseconds_left(state)}
   def handle_cast({:refresh, lifetime}, state) do
-    now = :calendar.local_time()
-    current_time = :calendar.datetime_to_gregorian_seconds(now)
-    {:noreply, %State{state | refresh_time: current_time}, milliseconds_left(current_time, lifetime)}
+    {:noreply, %State{state | refresh_time: Time.now()}, Time.milliseconds_left(Time.now(), lifetime)}
   end
   def handle_cast({:refresh_channel, id}, state) do
-    # now = :calendar.local_time()
-    # _current_time = :calendar.datetime_to_gregorian_seconds(now)
     Xirsys.Turn.Cache.Store.append_item_to_store(state.channels, {id, :nil})
-    {:noreply, state, milliseconds_left(state)}
+    {:noreply, state, Time.milliseconds_left(state)}
   end
   def handle_cast({:send_channel, channel_number, data}, state) do
     bytes_out = send_data_channel(channel_number, data, state.relayed_socket, state.channels)
-    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, milliseconds_left(state)}
+    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, Time.milliseconds_left(state)}
   end
   def handle_cast({:send_indication, {pip, pport} = _peer_address, data}, state) do
     bytes_out = case Xirsys.Turn.Cache.Store.has_key?(state.permissions, pip) do
@@ -253,11 +248,11 @@ defmodule Xirsys.Turn.Allocate.Client do
       _ ->
         0
     end
-    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, milliseconds_left(state)}
+    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, Time.milliseconds_left(state)}
   end
   def handle_cast({:log_data, data}, state) do
     bytes_out = byte_size(data)
-    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, milliseconds_left(state)}
+    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, Time.milliseconds_left(state)}
   end
 
   def terminate(reason, state) do
@@ -267,7 +262,6 @@ defmodule Xirsys.Turn.Allocate.Client do
     |> Channels.delete()
     Xirsys.Turn.Cache.Store.terminate(state.channels)
     Store.delete(state.id)
-    #:erlang.display :sys.statistics state.listener, :get
     :ok
   end
 
@@ -275,82 +269,13 @@ defmodule Xirsys.Turn.Allocate.Client do
   # Helper functions
   #########################################################################################################################
 
-  defp seconds_left(start_time, lifetime) do
-    now = :calendar.local_time()
-    current_time = :calendar.datetime_to_gregorian_seconds(now)
-    time_elapsed = current_time - start_time
-    case lifetime - time_elapsed do
-      time when time <= 0 -> 0
-      time                -> time
-    end
-  end
-
-  defp milliseconds_left(start_time, lifetime),
-    do: seconds_left(start_time, lifetime) * 1_000
-  defp milliseconds_left(%State{refresh_time: time, lifetime: life} = _state),
-    do: seconds_left(time, life) * 1_000
-
   defp open_port_call({policy, opts}, _from, state) do
-    case open_turn_port(state.tuple5.server_address, policy, opts) do
+    case SocketHelpers.open_turn_port(state.tuple5.server_address, policy, opts) do
       {:ok, socket} ->
         {:ok, port} = :inet.port(socket)
-        {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, milliseconds_left(state)}
+        {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
       {:error, reason} ->
-        {:reply, {:error, reason}, state, milliseconds_left(state)}
-    end
-  end
-
-  defp open_turn_port({_, _, _, _} = sip, policy, opts) do
-    udp_options = [{:ip, sip}, {:active, :once}, {:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, :binary] ++ opts #[{:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, {:exit_on_close, true}, {:keepalive, true}, {:nodelay, true}, {:packet, :raw}]
-    open_free_port(policy, udp_options)
-  end
-
-  defp open_free_port(:random, udp_options) do
-    ## BUGBUG: Should be a random port
-    case :gen_udp.open(0, udp_options) do
-      {:ok, socket} ->
-        {:ok, socket}
-      {:error, reason} ->
-        Logger.error "UDP open #{inspect udp_options} -> #{inspect reason}"
-        {:error, reason}
-      {EXIT, _} = reason ->
-        Logger.error "UDP open #{inspect udp_options} -> #{inspect reason}"
-        {:error, reason}
-    end
-  end
-  defp open_free_port({:range, min_port, max_port}, udp_options) when min_port <= max_port do
-    case :gen_udp.open(min_port, udp_options) do
-      {:ok, socket} ->
-        {:ok, socket}
-      {:error, :eaddrinuse} ->
-        policy2 = {:range, min_port + 1, max_port}
-        open_free_port(policy2, udp_options)
-      {:error, reason} ->
-        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
-        {:error, reason}
-      {EXIT, _} = reason ->
-        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
-        {:error, reason}
-    end
-  end
-  defp open_free_port({:range, _min_port, _max_port}, udp_options) do
-    reason = "Port range exhausted"
-    Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
-    {:error, reason}
-  end
-  defp open_free_port({:preferred, port}, udp_options) do
-    case :gen_udp.open(port, udp_options) do
-      {:ok, socket} ->
-        {:ok, socket}
-      {:error, :eaddrinuse} ->
-        policy2 = :random
-        open_free_port(policy2, udp_options)
-      {:error, reason} ->
-        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
-        {:error, reason}
-      {EXIT, _} = reason ->
-        Logger.error "UDP open #{inspect [0 | udp_options]} -> #{inspect reason}"
-        {:error, reason}
+        {:reply, {:error, reason}, state, Time.milliseconds_left(state)}
     end
   end
 

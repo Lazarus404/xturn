@@ -53,20 +53,20 @@ defmodule Xirsys.Turn.Auth.UUID do
   end
 
   def random(),
-    do: to_hex(:crypto.rand_bytes(16))
+    do: to_hex(:crypto.strong_rand_bytes(16))
 
   def utc_random() do
-    now = {_, _, micro} = :erlang.now()
+    now = {_, _, micro} = :erlang.timestamp()
     nowish = :calendar.now_to_universal_time(now)
     nowsecs = :calendar.datetime_to_gregorian_seconds(nowish)
     then = :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
     prefix = :io_lib.format("~14.16.0b", [(nowsecs - then) * 1000000 + micro])
-    :erlang.list_to_binary(prefix ++ to_hex(:crypto.rand_bytes(9)))
+    :erlang.list_to_binary(prefix ++ to_hex(:crypto.strong_rand_bytes(9)))
   end
 
   def new_prefix(),
-    do: to_hex(:crypto.rand_bytes(13))
+    do: to_hex(:crypto.strong_rand_bytes(13))
 
   def inc(),
-    do: :crypto.rand_uniform(1, 0xffe)
+    do: :rand.uniform(0xffe)
 end
