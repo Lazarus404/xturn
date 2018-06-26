@@ -72,6 +72,12 @@ defmodule Xirsys.Sockets.TCP_Listener do
     {:stop, :normal, state}
   end
 
+  def terminate(reason, %{:listener => listener, ssl: true} = _state) do
+    Logger.debug "TLS listener: terminating"
+    :ssl.close(listener)
+    Logger.debug "TLS listener closed: #{reason}"
+    :ok
+  end
   def terminate(reason, %{:listener => listener} = _state) do
     Logger.debug "TCP listener: terminating"
     :gen_tcp.close(listener)
@@ -95,7 +101,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
       end
       Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
       Logger.info "TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]"
-      {:ok, %{:listener => socket}}
+      {:ok, %{:listener => socket, ssl: ssl}}
     else
       _ -> {:error, :invalid_ip_address}
     end

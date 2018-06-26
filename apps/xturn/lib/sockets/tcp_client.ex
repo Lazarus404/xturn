@@ -82,7 +82,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
     Logger.debug "TCP call on handle_info"
     {:ok, cli_socket} = :ssl.transport_accept(list_socket)
-    with :ok <- :ssl.ssl_accept(cli_socket),
+    with :ok <- :ssl.handshake(cli_socket),
          {:ok, client_ip_port} <- :ssl.peername(cli_socket),
          {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
       Logger.debug "Client ssl accept"
@@ -92,7 +92,7 @@ defmodule Xirsys.Sockets.TCP_Client do
       {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
     else
       {:error, reason} ->
-        Logger.debug "Client ssl accept error"
+        Logger.debug "Client ssl accept error: #{inspect reason}"
         {:stop, :normal, state}
     end
   end

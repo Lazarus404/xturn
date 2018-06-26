@@ -1,3 +1,7 @@
-./turnutils_uclient -e 127.0.0.1 -L 127.0.0.1 -n 100 -p 3478 -v -t -T -l 2000 127.0.0.1
+turnutils_uclient -e 127.0.0.1 -L 127.0.0.1 -n 100 -p 5349 -v -S -l 2000 -k ./certs/server.key -i ./certs/server.crt 127.0.0.1
 
-./turnutils_uclient -e 205.134.231.187 -L 127.0.0.1 -n 100 -p 3478 -v -t -T -l 2000 205.134.231.187
+turnutils_uclient -e 127.0.0.1 -L 127.0.0.1 -n 100 -p 5349 -v -t -S -l 2000 -k ./certs/server.key -i ./certs/server.crt 127.0.0.1
+
+turnutils_uclient -e 127.0.0.1 -L 127.0.0.1 -n 100 -p 3478 -v -l 2000 127.0.0.1
+
+turnutils_uclient -e 127.0.0.1 -L 127.0.0.1 -n 100 -p 3478 -v -t -l 2000 127.0.0.1

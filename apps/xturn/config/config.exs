@@ -9,24 +9,20 @@ config :xturn,
   realm: "xirsys.com",
   listen: [
             {:udp, '0.0.0.0', 3478},
-            {:tcp, '0.0.0.0', 3478}#,
-            # {:sctp, '0.0.0.0', 3478},
+            {:tcp, '0.0.0.0', 3478},
             # {:udp, '0.0.0.0', 80},
             # {:tcp, '0.0.0.0', 80},
-            # {:sctp, '0.0.0.0', 80},
-            # {:udp, '0.0.0.0', 5349, :secure},
-            # {:tcp, '0.0.0.0', 5349, :secure},
-            # {:sctp, '0.0.0.0', 5349, :secure},
+            {:udp, '0.0.0.0', 5349, :secure},
+            {:tcp, '0.0.0.0', 5349, :secure}#,
             # {:udp, '0.0.0.0', 443, :secure},
             # {:tcp, '0.0.0.0', 443, :secure}
-            # {:sctp, '0.0.0.0', 443, :secure}
           ],
   server_type: "turn",
-  server_id: "test.apps.xirsys.com"
-#   certs: [
-#            {:certfile, "certs/server.crt"},
-#            {:keyfile, "certs/server.key"}
-#          ]
+  server_id: "test.apps.xirsys.com",
+  certs: [
+           {:certfile, "certs/server.crt"},
+           {:keyfile, "certs/server.key"}
+         ]
 
 config :maru, Xirsys.API,
   http: [port: 8880]
