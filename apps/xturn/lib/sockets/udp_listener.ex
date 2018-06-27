@@ -37,6 +37,12 @@ defmodule Xirsys.Sockets.UDP_Listener do
   require Logger
   @vsn "0"
 
+  @buf_size 1024*1024*1024
+  @opts [active: false,
+         buffer: @buf_size,
+         recbuf: @buf_size,
+         sndbuf: @buf_size]
+
   alias Xirsys.Turn.Conn
 
   #####
@@ -57,7 +63,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Initialises connection with IPv6 address
   """
   def init([cb, {_, _, _, _, _, _, _, _} = ip, port, ssl]) do
-    opts = [{:ip, ip}, {:active, false}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, :binary, :inet6]
+    opts = @opts ++ [ip: ip] ++ [:binary, :inet6]
     open_socket(cb, ip, port, ssl, opts)
   end
 
@@ -65,7 +71,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Initialises connection with IPv4 address
   """
   def init([cb, {_, _, _, _} = ip, port, ssl]) do
-    opts = [{:ip, ip}, {:active, false}, {:buffer, 1024*1024*1024}, {:recbuf, 1024*1024*1024}, {:sndbuf, 1024*1024*1024}, :binary]
+    opts = @opts ++ [ip: ip] ++ [:binary]
     open_socket(cb, ip, port, ssl, opts)
   end
 
@@ -77,11 +83,8 @@ defmodule Xirsys.Sockets.UDP_Listener do
   @doc """
   Asynchronous socket response handler
   """
-  def handle_cast({msg, ip, port}, %{ssl: true} = state) do
-    :ssl.send(state.socket, msg)
-    {:noreply, state}
-  end
   def handle_cast({msg, ip, port}, state) do
+    IO.puts "SENDING UDP"
     :gen_udp.send(state.socket, ip, port, msg)
     {:noreply, state}
   end
@@ -95,19 +98,6 @@ defmodule Xirsys.Sockets.UDP_Listener do
     {:noreply, state}
   end
 
-  def handle_info(:timeout, %{ssl: true} = state) do
-    with {:ok, cli_socket} <- :ssl.transport_accept(state.socket),
-         {:ok, sock} <- :ssl.handshake(cli_socket) do
-      set_sockopt(state.socket, sock)
-      :ssl.setopts(sock, [{:active, :once}, :binary])
-      :erlang.process_flag(:priority, :high)
-      {:noreply, %{state | socket: sock}}
-    else
-      {:error, reason} ->
-        Logger.debug "Client ssl accept error: #{inspect reason}"
-        {:stop, :normal, state}
-    end
-  end
   def handle_info(:timeout, state) do
     :inet.setopts(state.socket, [{:active, :once}, :binary])
     :erlang.process_flag(:priority, :high)
@@ -131,27 +121,6 @@ defmodule Xirsys.Sockets.UDP_Listener do
     :inet.setopts(state.socket, [{:active, :once}, :binary])
     :erlang.process_flag(:priority, :high)
     {:noreply, state}
-  end
-
-  @doc """
-  Message handler for incoming DTLS STUN packets
-  """
-  def handle_info({:ssl, client, msg}, state) do
-    Logger.debug "DTLS called #{inspect byte_size(msg)} bytes"
-    with {:ok, {fip, fport}} <- :ssl.peername(client),
-         {:ok, {tip, tport}} <- :ssl.sockname(client) do
-      spawn(state.callback, :process_message, [%Conn{
-          message: msg,
-          listener: self(),
-          client_ip: fip,
-          client_port: fport,
-          server_ip: tip,
-          server_port: tport
-        }])
-      :ssl.setopts(client, [{:active, :once}, :binary])
-      :erlang.process_flag(:priority, :high)
-      {:noreply, state}
-    end
   end
 
   def handle_info(info, state) do
@@ -193,15 +162,17 @@ defmodule Xirsys.Sockets.UDP_Listener do
   defp open_socket(cb, ip, port, ssl, opts) do
     Logger.info "UDP listener #{inspect self()} started at [#{:inet_parse.ntoa(ip)}:#{port}]"
     with true <- valid_ip?(ip) do
-      {:ok, fd} = case ssl do
+      case ssl do
         true ->
           {:ok, certs} = :application.get_env(:certs)
-          nopts = opts ++ certs ++ [{:protocol, :dtls}]
-          :ssl.listen(port, nopts)
+          nopts = opts ++ certs ++ [protocol: :dtls]
+          {:ok, fd} = :ssl.listen(port, nopts)
+          Xirsys.Sockets.TCP_Client.create(fd, cb, ssl)
+          {:ok, %{listener: fd, ssl: ssl}}
         _ ->
-          :gen_udp.open(port, opts)
+          {:ok, fd} = :gen_udp.open(port, opts)
+          {:ok, %{socket: fd, callback: cb, ssl: ssl}, 0}
       end
-      {:ok, %{:socket => fd, :callback => cb, ssl: ssl}, 0}#, :pid => pid}}
     else
       false -> {:error, :invalid_ip_address}
       e -> e

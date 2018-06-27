@@ -160,7 +160,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "udp data sent from peer #{inspect ip}:#{inspect in_port} in genserver #{inspect self()}"
     Logger.debug "#{inspect state}"
     bytes_in =
-    with true <- Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) do
+    with true <- Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) and require_perms() do
       length = byte_size(packet)
       peer_address = {ip, in_port}
       Logger.debug "sending #{inspect length} bytes to client"
@@ -276,6 +276,13 @@ defmodule Xirsys.Turn.Allocate.Client do
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
       {:error, reason} ->
         {:reply, {:error, reason}, state, Time.milliseconds_left(state)}
+    end
+  end
+
+  defp require_perms() do
+    case Application.get_env(:xturn, :permissions) do
+      %{required: required} -> required
+      _ -> true
     end
   end
 

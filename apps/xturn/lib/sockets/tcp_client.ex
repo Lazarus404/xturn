@@ -81,13 +81,13 @@ defmodule Xirsys.Sockets.TCP_Client do
 
   def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
     Logger.debug "TCP call on handle_info"
-    {:ok, cli_socket} = :ssl.transport_accept(list_socket)
-    with :ok <- :ssl.handshake(cli_socket),
+    with {:ok, cli_socket} <- :ssl.transport_accept(list_socket),
+         :ok <- :ssl.ssl_accept(cli_socket),
          {:ok, client_ip_port} <- :ssl.peername(cli_socket),
          {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
       Logger.debug "Client ssl accept"
       create(list_socket, cb, state.ssl)
-      set_sockopt(list_socket, cli_socket)
+      ssl_sockopt(list_socket, cli_socket)
       :ssl.setopts(cli_socket, [{:active, :once}, :binary])
       {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
     else
@@ -163,6 +163,18 @@ defmodule Xirsys.Sockets.TCP_Client do
   @doc """
   Apply specific socket option for STUN connection
   """
+  def ssl_sockopt(list_sock, cli_socket) do
+    # true = :inet_db.register_socket(cli_socket, :inet_udp)
+    try do
+      {:ok, opts} = :ssl.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
+      :ssl.setopts(cli_socket, opts)
+      :ok
+    rescue
+      e ->
+        Logger.error "damn #{inspect e}"
+        close(cli_socket)
+    end
+  end
   def set_sockopt(list_sock, cli_socket) do
     true = :inet_db.register_socket(cli_socket, :inet_tcp)
     try do
@@ -178,6 +190,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   end
 
   def send_msg({:sslsocket, _, _} = socket, msg) do
+    IO.puts "SENDING"
     :ssl.send(socket, msg)
   end
   def send_msg(socket, msg) do
