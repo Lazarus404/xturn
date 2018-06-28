@@ -442,7 +442,7 @@ defmodule Xirsys.Stun do
 
   defp hmac_sha1(msg, hash) when is_binary(msg) and is_binary(hash) do
     key = :crypto.hash(:md5, to_char_list(hash))
-    :crypto.sha_mac(key, msg)
+    :crypto.hmac(:sha, key, msg)
   end
 
   # Removes null value from the end of a list string or bitstring
