@@ -82,7 +82,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
     Logger.debug "TCP call on handle_info"
     with {:ok, cli_socket} <- :ssl.transport_accept(list_socket),
-         :ok <- :ssl.ssl_accept(cli_socket),
+         {:ok, cli_socket} <- :ssl.handshake(cli_socket),
          {:ok, client_ip_port} <- :ssl.peername(cli_socket),
          {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
       Logger.debug "Client ssl accept"
@@ -197,13 +197,13 @@ defmodule Xirsys.Sockets.TCP_Client do
     :gen_tcp.send(socket, msg)
   end
 
-  def close(nil) do
-    Logger.error "Caught attempted close of nil socket"
+  defp close(nil) do
+    Logger.debug "Caught attempted close of nil socket"
   end
-  def close({:sslsocket, _, _} = socket) do
+  defp close({:sslsocket, _, _} = socket) do
     :ssl.close(socket)
   end
-  def close(socket) when socket != nil do
+  defp close(socket) when socket != nil do
     :gen_tcp.close(socket)
   end
 end

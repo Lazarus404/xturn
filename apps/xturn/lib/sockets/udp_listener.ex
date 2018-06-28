@@ -180,7 +180,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   def close(nil) do
-    Logger.error "Caught attempted close of nil socket"
+    Logger.debug "Caught attempted close of nil socket"
   end
   def close({:sslsocket, _, _} = socket) do
     :ssl.close(socket)
