@@ -44,7 +44,7 @@ defmodule Xirsys.Utils.Socket do
   """
   @spec server_ip() :: tuple()
   def server_ip(),
-    do: Application.get_env(:xturn, :server_id, {0, 0, 0, 0})
+    do: Application.get_env(:xturn, :server_ip, {0, 0, 0, 0})
 
   @doc """
   Opens a new port for UDP TURN transport
