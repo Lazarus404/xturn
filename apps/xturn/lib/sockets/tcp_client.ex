@@ -100,7 +100,7 @@ defmodule Xirsys.Sockets.TCP_Client do
     Logger.debug "handle_info timeout #{inspect cb}"
     with {:ok, cli_socket} <- :gen_tcp.accept(list_socket),
          {:ok, client_ip_port} <- :inet.peername(cli_socket),
-         {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
+         {:ok, server_ip_port} <- :inet.sockname(cli_socket) do
       Logger.debug "#{inspect list_socket}"
       create(list_socket, cb, false)
       set_sockopt(list_socket, cli_socket)
