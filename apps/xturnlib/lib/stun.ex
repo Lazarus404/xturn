@@ -42,6 +42,8 @@ defmodule Xirsys.Stun do
 
   defmodule IntegrityError do
     defstruct message: nil
+
+    def exception(msg), do: %__MODULE__{message: msg}
   end
 
   alias Xirsys.Stun.IntegrityError
