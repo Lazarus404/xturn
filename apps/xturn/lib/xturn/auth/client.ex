@@ -77,12 +77,10 @@ defmodule Xirsys.Turn.Auth.Client do
   def handle_call({:create_user, ns, peer_id}, _from, state) do
     username = Xirsys.Turn.Auth.UUID.utc_random()
     password = Xirsys.Turn.Auth.UUID.utc_random()
-    Logger.debug("CREATING USER 1")
     Xirsys.Turn.Cache.Store.append_item_to_store(state, {username, {password, ns, peer_id}})
     {:reply, {:ok, username, password}, state}
   end
   def handle_call({:add_user, user, pass, ns, peer_id}, _from, state) do
-    Logger.debug("CREATING USER 2")
     Xirsys.Turn.Cache.Store.append_item_to_store(state, {user, {pass, ns, peer_id}})
     {:reply, {:ok, user, pass}, state}
   end
