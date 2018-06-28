@@ -40,14 +40,6 @@ defmodule Xirsys.Stun do
   The Xirsys.Stun module provides the RFC 5389 implementation of the STUN protocol for both encoding and decoding.
   """
 
-  defmodule IntegrityError do
-    defstruct message: nil
-
-    def exception(msg), do: %__MODULE__{message: msg}
-  end
-
-  alias Xirsys.Stun.IntegrityError
-
   @doc """
   Used by the STUN specification RFC 5389 to tag a packet as
   specifically of a STUN format.
@@ -384,7 +376,7 @@ defmodule Xirsys.Stun do
           {true, <<h::size(16), new_size::size(16), payload::binary>>}
         rescue
            _ ->
-             Logger.info "MESSAGE-INTEGRITY invalid in STUN message; no fingerprint."
+             Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
              raise IntegrityError, message: "Integrity check failed"
         end
       _ ->
@@ -394,24 +386,39 @@ defmodule Xirsys.Stun do
   end
 
   # full check of integrity
-  defp check_integrity(stun_binary, nil) do
-    Logger.info "Nil MESSAGE-INTEGRITY was found in STUN message."
-    {false, stun_binary}
-  end
-  defp check_integrity(stun_binary, key) do
+  # defp check_integrity(stun_binary, nil) do
+  #   Logger.info "Nil MESSAGE-INTEGRITY was found in STUN message."
+  #   {false, stun_binary}
+  # end
+  # defp check_integrity(stun_binary, key) do
+  #   s = byte_size(stun_binary) - 24
+  #   case stun_binary do
+  #     <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
+  #       try do
+  #         ^fingerprint = hmac_sha1(message, key)
+  #         <<h::size(16), old_size::size(16), payload::binary>> = message
+  #         new_size = old_size - 24
+  #         {true, <<h::size(16), new_size::size(16), payload::binary>>}
+  #       rescue
+  #          _ ->
+  #            Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
+  #            raise IntegrityError, message: "Integrity check failed"
+  #       end
+  #     _ ->
+  #       Logger.info "No MESSAGE-INTEGRITY was found in STUN message."
+  #       {false, stun_binary}
+  #   end
+  # end
+
+  defp check_integrity(stun_binary, nil), do: {false, stun_binary}
+  defp check_integrity(stun_binary, key) when byte_size(stun_binary) > (20+24) do
     s = byte_size(stun_binary) - 24
     case stun_binary do
       <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
-        try do
-          ^fingerprint = hmac_sha1(message, key)
-          <<h::size(16), old_size::size(16), payload::binary>> = message
-          new_size = old_size - 24
-          {true, <<h::size(16), new_size::size(16), payload::binary>>}
-        rescue
-           _ ->
-             Logger.info "MESSAGE-INTEGRITY invalid in STUN message; with fingerprint."
-             raise IntegrityError, message: "Integrity check failed"
-        end
+        ^fingerprint = :crypto.sha_mac(key, message)
+        <<h::size(16), old_size::size(16), payload::binary>> = message
+        new_size = old_size - 24
+        {true, <<h::size(16), new_size::size(16), payload::binary>>}
       _ ->
         Logger.info "No MESSAGE-INTEGRITY was found in STUN message."
         {false, stun_binary}

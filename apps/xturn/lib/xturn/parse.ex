@@ -320,18 +320,16 @@ defmodule Xirsys.Turn.Parse do
   ###TODO: Correctly implement custom XirSys authentication to TURN spec [RFC5766]
   defp process_integrity(msg, username) do
     Logger.info "Checking USERNAME #{inspect username}"
-    {:ok, turn_dec} =
-    case AuthClient.get_details(username) do
-      {:ok, pw, ns, peer_id} ->
-        key = username <> ":" <> @realm <> ":" <> pw
-        Logger.info "KEY = #{inspect key}"
-        {:ok, turn} = Stun.decode(msg, key)
-        {:ok, %Stun{turn | key: key, ns: ns, peer_id: peer_id}}
-      :error ->
-        Logger.info "User not found"
-        {:ok, false}
+    with {:ok, pw, ns, peer_id} <- AuthClient.get_details(username),
+         key <- username <> ":" <> @realm <> ":" <> pw,
+         _ <- Logger.info("KEY = #{inspect key}"),
+         {:ok, turn} <- Stun.decode(msg, key) do
+      %Stun{turn | key: key, ns: ns, peer_id: peer_id}
+    else
+      e ->
+        Logger.info "Integrity process failed: #{inspect e}"
+        false
     end
-    turn_dec
   end
 
   # Handles incoming channel data. We route this directly to the peers, if they exist and
