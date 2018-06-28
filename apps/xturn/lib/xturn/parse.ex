@@ -235,7 +235,7 @@ defmodule Xirsys.Turn.Parse do
     Logger.debug "refreshing #{inspect conn.decoded_message}"
     with true <- Map.has_key?(attrs, :lifetime),
          val <- Map.get(attrs, :lifetime),
-         tuple5 <-Tuple5.to_map(Tuple5.create(conn, :"_")) do
+         tuple5 <- Tuple5.to_map(Tuple5.create(conn, :"_")) do
       do_refresh(conn, val, tuple5)
     else
       _ ->
@@ -352,18 +352,18 @@ defmodule Xirsys.Turn.Parse do
     end
   end
 
-  defp do_refresh(conn, <<0::32>>, tuple5) do
-    case Store.lookup(tuple5) do
-      {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
-        Logger.debug "Refreshing with 0 time"
-        AllocateClient.refresh(client, 0)
-        conn
-      {:error, :not_found} ->
-        Conn.halt(conn)
-    end
-    IO.puts "COULD NOT FIND ALLOCATION #{inspect tuple5}"
-    Conn.response(conn, 437, "Allocation Mismatch")
-  end
+  # defp do_refresh(conn, <<0::32>>, tuple5) do
+  #   case Store.lookup(tuple5) do
+  #     {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
+  #       Logger.debug "Refreshing with 0 time"
+  #       AllocateClient.refresh(client, 0)
+  #       conn
+  #     {:error, :not_found} ->
+  #       Conn.halt(conn)
+  #   end
+  #   IO.puts "COULD NOT FIND ALLOCATION #{inspect tuple5}"
+  #   Conn.response(conn, 437, "Allocation Mismatch")
+  # end
   defp do_refresh(conn, <<b::32>>, tuple5) when is_integer(b) do
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
