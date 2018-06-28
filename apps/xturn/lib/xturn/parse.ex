@@ -162,7 +162,7 @@ defmodule Xirsys.Turn.Parse do
   # then this is a duplicate allocation request and can be safely
   # ignored.
   defp action(:not_allocation_exists, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, conn.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
+    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, Utils.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
     with false <- Store.exists(tup5) do
       conn
     else
@@ -215,7 +215,7 @@ defmodule Xirsys.Turn.Parse do
     AllocateClient.set_peer_details(pid, conn.decoded_message.ns, conn.decoded_message.peer_id)
     {:ok, socket, port} = AllocateClient.open_port_random(pid, opts)
     {:ok, permission_cache} = AllocateClient.get_permission_cache(pid)
-    relay_address = {conn.server_ip, port}
+    relay_address = {Utils.server_ip, port}
     AllocateClient.set_relay_address(pid, relay_address)
     Store.insert(conn.decoded_message.transactionid, pid, relay_address, tuple5, socket, permission_cache)
     nattrs = %{
