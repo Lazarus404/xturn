@@ -128,7 +128,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def send_indication(pid, {pip, pport}, <<_::binary>> = data, socket, perms) do
     case Xirsys.Turn.Cache.Store.has_key?(perms, pip) do
       true ->
-        Client.send_data(socket, pip, pport, data)
+        Client.send_data(data, pip, pport, socket)
         GenServer.cast(pid, {:log_data, data})
       _ ->
         :ok
@@ -293,7 +293,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     send_data(msg, t5.client_address, t5.client_port, state)
   end
   def send_data(msg, cip, cport, state) when is_map(state) do
-    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on socket #{inspect state.relayed_socket}"
+    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
     :gen_udp.send(state.relayed_socket, cip, cport, msg)
   end
   def send_data(msg, cip, cport, socket) do
