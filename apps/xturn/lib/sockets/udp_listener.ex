@@ -44,7 +44,6 @@ defmodule Xirsys.Sockets.UDP_Listener do
          sndbuf: @buf_size]
 
   alias Xirsys.Turn.Conn
-  alias Xirsys.Utils.Socket, as: Utils
 
   #####
   # External API
@@ -110,8 +109,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   """
   def handle_info({:udp, _fd, fip, fport, msg}, state) do
     Logger.debug "UDP called #{inspect byte_size(msg)} bytes"
-    tip = Utils.server_ip()
-    {:ok, {_, tport}} = :inet.sockname(state.socket)
+    {:ok, {tip, tport}} = :inet.sockname(state.socket)
     spawn(state.callback, :process_message, [%Conn{
         message: msg,
         listener: self(),

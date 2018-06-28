@@ -84,13 +84,12 @@ defmodule Xirsys.Sockets.TCP_Client do
     with {:ok, cli_socket} <- :ssl.transport_accept(list_socket),
          :ok <- :ssl.ssl_accept(cli_socket),
          {:ok, client_ip_port} <- :ssl.peername(cli_socket),
-         {:ok, {_, sport}} <- :ssl.sockname(cli_socket),
-         sip <- Utils.server_ip() do
+         {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
       Logger.debug "Client ssl accept"
       create(list_socket, cb, state.ssl)
       ssl_sockopt(list_socket, cli_socket)
       :ssl.setopts(cli_socket, [{:active, :once}, :binary])
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {sip, sport}}}}
+      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
     else
       {:error, reason} ->
         Logger.debug "Client ssl accept error: #{inspect reason}"
@@ -101,14 +100,13 @@ defmodule Xirsys.Sockets.TCP_Client do
     Logger.debug "handle_info timeout #{inspect cb}"
     with {:ok, cli_socket} <- :gen_tcp.accept(list_socket),
          {:ok, client_ip_port} <- :inet.peername(cli_socket),
-         {:ok, {_, sport}} <- :ssl.sockname(cli_socket),
-         sip <- Utils.server_ip() do
+         {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
       Logger.debug "#{inspect list_socket}"
       create(list_socket, cb, false)
       set_sockopt(list_socket, cli_socket)
       :inet.setopts(cli_socket, [{:active, :once}, :binary])
       Logger.debug "returning from timeout"
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {sip, sport}}}}
+      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
     end
   end
 
