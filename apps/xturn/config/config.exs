@@ -19,7 +19,7 @@ config :xturn,
             # {:tcp, '0.0.0.0', 443, :secure}
           ],
   server_type: "turn",
-  server_id: "test.apps.xirsys.com",
+  server_id: "turn.tstitch.me",
   server_ip: {185, 136, 235, 163},
   certs: [
            {:certfile, "certs/server.crt"},
