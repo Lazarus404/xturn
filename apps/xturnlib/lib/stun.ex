@@ -415,7 +415,9 @@ defmodule Xirsys.Stun do
     s = byte_size(stun_binary) - 24
     case stun_binary do
       <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
-        ^fingerprint = :crypto.sha_mac(key, message)
+        fp = hmac_sha1(message, key)
+        IO.puts "FP: #{inspect fp}"
+        IO.puts "FingerPrint: #{inspect fingerprint}"
         <<h::size(16), old_size::size(16), payload::binary>> = message
         new_size = old_size - 24
         {true, <<h::size(16), new_size::size(16), payload::binary>>}
