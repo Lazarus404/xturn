@@ -86,6 +86,7 @@ defmodule Xirsys.Turn.Auth.Client do
     Xirsys.Turn.Cache.Store.append_item_to_store(state, {user, {pass, ns, peer_id}})
     {:reply, {:ok, user, pass}, state}
   end
+  def handle_call({:get_pass, "user"}, _from, state), do: "pass"
   def handle_call({:get_pass, username}, _from, state) do
     case Xirsys.Turn.Cache.Store.fetch(state, username) do
       {:ok, {pass, _, _}} ->

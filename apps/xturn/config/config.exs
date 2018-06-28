@@ -5,7 +5,7 @@ config :logger,
   compile_time_purge_level: :debug
 
 config :xturn,
-  authentication: %{required: false},
+  authentication: %{required: true},
   permissions: %{required: false},
   realm: "xirsys.com",
   listen: [

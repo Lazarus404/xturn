@@ -101,7 +101,7 @@ defmodule Xirsys.Turn.Parse do
     attrs = %{
               xor_mapped_address: {conn.client_ip, conn.client_port},
               mapped_address: {conn.client_ip, conn.client_port},
-              response_origin: {Utils.server_ip, conn.server_port}
+              response_origin: {Utils.server_ip(), conn.server_port}
             }
     Conn.response(conn, :success, attrs)
   end
@@ -174,7 +174,7 @@ defmodule Xirsys.Turn.Parse do
         nattrs = [
           #{:reservation_token, <<0::64>>},
           {:xor_mapped_address, {conn.client_ip, conn.client_port}},
-          {:xor_relayed_address, {Utils.server_ip, port}},
+          {:xor_relayed_address, {Utils.server_ip(), port}},
           {:lifetime, <<600::32>>}
         ]
         Logger.debug "integrity = #{conn.decoded_message.integrity}"
@@ -221,7 +221,7 @@ defmodule Xirsys.Turn.Parse do
     nattrs = %{
       # reservation_token: <<0::64>>,
       xor_mapped_address: {conn.client_ip, conn.client_port},
-      xor_relayed_address: {Utils.server_ip, port},
+      xor_relayed_address: {Utils.server_ip(), port},
       lifetime: <<600::32>>
     }
     Logger.debug "integrity = #{conn.decoded_message.integrity}"
