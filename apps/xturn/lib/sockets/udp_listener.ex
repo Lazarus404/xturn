@@ -85,7 +85,6 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Asynchronous socket response handler
   """
   def handle_cast({msg, ip, port}, state) do
-    IO.puts "SENDING UDP"
     :gen_udp.send(state.socket, ip, port, msg)
     {:noreply, state}
   end

@@ -190,7 +190,6 @@ defmodule Xirsys.Sockets.TCP_Client do
   end
 
   def send_msg({:sslsocket, _, _} = socket, msg) do
-    IO.puts "SENDING"
     :ssl.send(socket, msg)
   end
   def send_msg(socket, msg) do
