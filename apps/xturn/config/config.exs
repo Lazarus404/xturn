@@ -6,7 +6,7 @@ config :logger,
 
 config :xturn,
   authentication: %{required: false},
-  permissions: %{required: true},
+  permissions: %{required: false},
   realm: "xirsys.com",
   listen: [
             {:udp, '0.0.0.0', 3478},
