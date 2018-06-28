@@ -386,38 +386,12 @@ defmodule Xirsys.Stun do
   end
 
   # full check of integrity
-  # defp check_integrity(stun_binary, nil) do
-  #   Logger.info "Nil MESSAGE-INTEGRITY was found in STUN message."
-  #   {false, stun_binary}
-  # end
-  # defp check_integrity(stun_binary, key) do
-  #   s = byte_size(stun_binary) - 24
-  #   case stun_binary do
-  #     <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
-  #       try do
-  #         ^fingerprint = hmac_sha1(message, key)
-  #         <<h::size(16), old_size::size(16), payload::binary>> = message
-  #         new_size = old_size - 24
-  #         {true, <<h::size(16), new_size::size(16), payload::binary>>}
-  #       rescue
-  #          _ ->
-  #            Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
-  #            raise IntegrityError, message: "Integrity check failed"
-  #       end
-  #     _ ->
-  #       Logger.info "No MESSAGE-INTEGRITY was found in STUN message."
-  #       {false, stun_binary}
-  #   end
-  # end
-
   defp check_integrity(stun_binary, nil), do: {false, stun_binary}
   defp check_integrity(stun_binary, key) when byte_size(stun_binary) > (20+24) do
     s = byte_size(stun_binary) - 24
     case stun_binary do
       <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
-        fp = hmac_sha1(message, key)
-        IO.puts "FP: #{inspect fp}"
-        IO.puts "FingerPrint: #{inspect fingerprint}"
+        ^fingerprint = hmac_sha1(message, key)
         <<h::size(16), old_size::size(16), payload::binary>> = message
         new_size = old_size - 24
         {true, <<h::size(16), new_size::size(16), payload::binary>>}
