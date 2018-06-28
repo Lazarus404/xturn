@@ -45,8 +45,8 @@ defmodule Xirsys.Turn.Allocate.Client do
   alias Xirsys.Turn.Channels.Channel, as: Channel
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
-  alias Xirsys.Utils.Socket, as: SocketHelpers
   alias Xirsys.Utils.Timing, as: Time
+  alias Xirsys.Utils.Socket, as: Utils
 
   #########################################################################################################################
   # Interface functions
@@ -271,7 +271,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   defp open_port_call({policy, opts}, _from, state) do
-    case SocketHelpers.open_turn_port(Utils.server_local_ip(), policy, opts) do
+    case Utils.open_turn_port(Utils.server_local_ip(), policy, opts) do
       {:ok, socket} ->
         {:ok, port} = :inet.port(socket)
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
