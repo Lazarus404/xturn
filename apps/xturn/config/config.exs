@@ -20,6 +20,7 @@ config :xturn,
           ],
   server_type: "turn",
   server_id: "test.apps.xirsys.com",
+  server_ip: {0, 0, 0, 0}
   certs: [
            {:certfile, "certs/server.crt"},
            {:keyfile, "certs/server.key"}

@@ -40,6 +40,13 @@ defmodule Xirsys.Utils.Socket do
   @send_msg 0
 
   @doc """
+  Returns the server ip from config for packet use
+  """
+  @spec server_ip() :: tuple()
+  def server_ip(),
+    do: Application.get_env(:xturn, :server_id, {0, 0, 0, 0})
+
+  @doc """
   Opens a new port for UDP TURN transport
   """
   def open_turn_port({_, _, _, _} = sip, policy, opts) do
