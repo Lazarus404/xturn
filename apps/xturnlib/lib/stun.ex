@@ -40,6 +40,12 @@ defmodule Xirsys.Stun do
   The Xirsys.Stun module provides the RFC 5389 implementation of the STUN protocol for both encoding and decoding.
   """
 
+  defmodule IntegrityError do
+    defstruct message: nil
+  end
+
+  alias Xirsys.Stun.IntegrityError
+
   @doc """
   Used by the STUN specification RFC 5389 to tag a packet as
   specifically of a STUN format.
@@ -376,7 +382,7 @@ defmodule Xirsys.Stun do
           {true, <<h::size(16), new_size::size(16), payload::binary>>}
         rescue
            _ ->
-             Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
+             Logger.info "MESSAGE-INTEGRITY invalid in STUN message; no fingerprint."
              raise IntegrityError, message: "Integrity check failed"
         end
       _ ->
@@ -401,7 +407,7 @@ defmodule Xirsys.Stun do
           {true, <<h::size(16), new_size::size(16), payload::binary>>}
         rescue
            _ ->
-             Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
+             Logger.info "MESSAGE-INTEGRITY invalid in STUN message; with fingerprint."
              raise IntegrityError, message: "Integrity check failed"
         end
       _ ->
