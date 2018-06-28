@@ -257,7 +257,8 @@ defmodule Xirsys.Turn.Allocate.Client do
 
   def terminate(reason, state) do
     Logger.info "Terminating with state : #{inspect reason}"
-    :gen_udp.close(state.relayed_socket)
+    if (state.relayed_socket),
+      do: :gen_udp.close(state.relayed_socket)
     Xirsys.Turn.Cache.Store.keys(state.channels)
     |> Channels.delete()
     Xirsys.Turn.Cache.Store.terminate(state.channels)
