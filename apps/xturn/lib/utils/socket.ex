@@ -47,6 +47,13 @@ defmodule Xirsys.Utils.Socket do
     do: Application.get_env(:xturn, :server_ip, {0, 0, 0, 0})
 
   @doc """
+  Returns the servers local ip from the config
+  """
+  @spec server_local_ip() :: tuple()
+  def server_local_ip(),
+    do: Application.get_env(:xturn, :server_local_ip, {0, 0, 0, 0})
+
+  @doc """
   Opens a new port for UDP TURN transport
   """
   def open_turn_port({_, _, _, _} = sip, policy, opts) do
