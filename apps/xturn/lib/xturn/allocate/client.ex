@@ -271,7 +271,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   defp open_port_call({policy, opts}, _from, state) do
-    case Utils.open_turn_port(Utils.server_local_ip(), policy, opts) do
+    case Utils.open_turn_port(state.tuple5.server_address, policy, opts) do
       {:ok, socket} ->
         {:ok, port} = :inet.port(socket)
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}

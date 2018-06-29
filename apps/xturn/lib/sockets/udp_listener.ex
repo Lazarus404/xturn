@@ -109,13 +109,13 @@ defmodule Xirsys.Sockets.UDP_Listener do
   """
   def handle_info({:udp, _fd, fip, fport, msg}, state) do
     Logger.debug "UDP called #{inspect byte_size(msg)} bytes"
-    {:ok, {_, tport}} = :inet.sockname(state.socket)
+    {:ok, {tip, tport}} = :inet.sockname(state.socket)
     spawn(state.callback, :process_message, [%Conn{
         message: msg,
         listener: self(),
         client_ip: fip,
         client_port: fport,
-        server_ip: Utils.server_ip(),
+        server_ip: tip,
         server_port: tport
       }])
     :inet.setopts(state.socket, [{:active, :once}, :binary])
