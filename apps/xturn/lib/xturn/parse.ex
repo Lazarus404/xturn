@@ -296,7 +296,7 @@ defmodule Xirsys.Turn.Parse do
       if (pip == relay_ip) do
         attrs = %{}
         |> Map.put(:xor_peer_address, peer_address)
-        |> Map.put(:data, packet)
+        |> Map.put(:data, conn.message)
         <<tid::96>> = :crypto.strong_rand_bytes(12)
         data =
         %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: attrs}
