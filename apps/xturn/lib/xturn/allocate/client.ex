@@ -159,8 +159,9 @@ defmodule Xirsys.Turn.Allocate.Client do
   def handle_info({:udp, socket, ip, in_port, packet}, state) do
     Logger.debug "udp data sent from peer #{inspect ip}:#{inspect in_port} in genserver #{inspect self()}"
     Logger.debug "#{inspect state}"
-    # bytes_in =
-    # with true <- Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) and require_perms() do
+    bytes_in =
+    with true <- (Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) and require_perms())
+                  or not require_perms() do
       length = byte_size(packet)
       peer_address = {ip, in_port}
       Logger.debug "sending #{inspect length} bytes to client"
@@ -179,12 +180,12 @@ defmodule Xirsys.Turn.Allocate.Client do
           Stun.encode(conn)
       end
       GenServer.cast(state.listener, {data, state.tuple5.client_address, state.tuple5.client_port})
-      bytes_in = byte_size(data)
-    # else
-    #   _ ->
-    #     Logger.info "peer permission not available #{inspect state.tuple5}"
-    #     0
-    # end
+      byte_size(data)
+    else
+      _ ->
+        Logger.info "peer permission not available #{inspect state.tuple5}"
+        0
+    end
     :inet.setopts(socket, [{:active, :once}, :binary])
     {:noreply, %State{state | bytes_in: state.bytes_in + bytes_in}, Time.milliseconds_left(state)}
   end

@@ -352,11 +352,20 @@ defmodule Xirsys.Turn.Parse do
     end
   end
 
+  defp do_refresh(conn, <<0::32>>, tuple5) do
+    case Store.lookup(tuple5) do
+      {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
+        Logger.debug "Refreshing with 0 time"
+        AllocateClient.refresh(client, 0)
+      {:error, :not_found} ->
+        Conn.response(conn, 437, "Allocation Mismatch")
+    end
+  end
   defp do_refresh(conn, <<b::32>>, tuple5) when is_integer(b) do
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
-        AllocateClient.refresh(client, 600)
-        new_attrs = %{lifetime: <<600::32>>}
+        AllocateClient.refresh(client, b)
+        new_attrs = %{lifetime: <<b::32>>}
         Conn.response(conn, :success, new_attrs)
       {:error, :not_found} ->
         Conn.response(conn, 437, "Allocation Mismatch")
