@@ -25,8 +25,11 @@ Future Plans
 Changelog
 ===
 02-07-2018 - Get working with test.webrtc.org
+
 26-06-2018 - Add DTLS support
+
 21-09-2014 - Convert to Elixir
+
 14-12-2013 - Initial working implementation in Erlang
 
 Contact
