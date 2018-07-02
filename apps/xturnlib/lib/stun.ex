@@ -386,24 +386,15 @@ defmodule Xirsys.Stun do
   end
 
   # full check of integrity
-  defp check_integrity(stun_binary, nil) do
-    Logger.info "Nil MESSAGE-INTEGRITY was found in STUN message."
-    {false, stun_binary}
-  end
-  defp check_integrity(stun_binary, key) do
+  defp check_integrity(stun_binary, nil), do: {false, stun_binary}
+  defp check_integrity(stun_binary, key) when byte_size(stun_binary) > (20+24) do
     s = byte_size(stun_binary) - 24
     case stun_binary do
       <<message::binary-size(s), 0x00::size(8), 0x08::size(8), 0x00::size(8), 0x14::size(8), fingerprint::binary-size(20)>> ->
-        try do
-          ^fingerprint = hmac_sha1(message, key)
-          <<h::size(16), old_size::size(16), payload::binary>> = message
-          new_size = old_size - 24
-          {true, <<h::size(16), new_size::size(16), payload::binary>>}
-        rescue
-           _ ->
-             Logger.info "MESSAGE-INTEGRITY invalid in STUN message."
-             raise IntegrityError, message: "Integrity check failed"
-        end
+        ^fingerprint = hmac_sha1(message, key)
+        <<h::size(16), old_size::size(16), payload::binary>> = message
+        new_size = old_size - 24
+        {true, <<h::size(16), new_size::size(16), payload::binary>>}
       _ ->
         Logger.info "No MESSAGE-INTEGRITY was found in STUN message."
         {false, stun_binary}
@@ -425,7 +416,7 @@ defmodule Xirsys.Stun do
 
   defp hmac_sha1(msg, hash) when is_binary(msg) and is_binary(hash) do
     key = :crypto.hash(:md5, to_char_list(hash))
-    :crypto.sha_mac(key, msg)
+    :crypto.hmac(:sha, key, msg)
   end
 
   # Removes null value from the end of a list string or bitstring

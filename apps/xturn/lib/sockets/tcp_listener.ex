@@ -38,6 +38,15 @@ defmodule Xirsys.Sockets.TCP_Listener do
   require Logger
   @vsn "0"
 
+  @buf_size 1024*1024*16
+  @opts [reuseaddr: true,
+         keepalive: true,
+         backlog: 30,
+         active: false,
+         buffer: @buf_size,
+         recbuf: @buf_size,
+         sndbuf: @buf_size]
+
   #####
   # External API
 
@@ -56,7 +65,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
   Initialises connection with IPv6 address
   """
   def init([cb, {_, _, _, _, _, _, _, _} = ip, port, ssl]) do
-    opts = [{:ip, ip}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:active, false}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, :inet6]
+    opts = @opts ++ [ip: ip] ++ [:binary, :inet6]
     open_socket(cb, ip, port, ssl, opts)
   end
 
@@ -64,7 +73,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
   Initialises connection with IPv4 address
   """
   def init([cb, {_, _, _, _} = ip, port, ssl]) do
-    opts = [{:ip, ip}, :binary, {:reuseaddr, true}, {:keepalive, true}, {:backlog, 30}, {:buffer, 1024*1024*16}, {:recbuf, 1024*1024*16}, {:sndbuf, 1024*1024*16}, {:active, false}]
+    opts = @opts ++ [ip: ip] ++ [:binary]
     open_socket(cb, ip, port, ssl, opts)
   end
 
@@ -72,6 +81,12 @@ defmodule Xirsys.Sockets.TCP_Listener do
     {:stop, :normal, state}
   end
 
+  def terminate(reason, %{:listener => listener, ssl: true} = _state) do
+    Logger.debug "TLS listener: terminating"
+    :ssl.close(listener)
+    Logger.debug "TLS listener closed: #{reason}"
+    :ok
+  end
   def terminate(reason, %{:listener => listener} = _state) do
     Logger.debug "TCP listener: terminating"
     :gen_tcp.close(listener)
@@ -95,7 +110,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
       end
       Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
       Logger.info "TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]"
-      {:ok, %{:listener => socket}}
+      {:ok, %{listener: socket, ssl: ssl}}
     else
       _ -> {:error, :invalid_ip_address}
     end

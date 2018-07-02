@@ -54,6 +54,7 @@ defmodule Xirsys.Turn.Parse do
   alias Xirsys.Turn.Allocate.Client, as: AllocateClient
   alias Xirsys.Turn.Auth.Client, as: AuthClient
   alias Xirsys.Stun
+  alias Xirsys.Utils.Socket, as: Utils
 
   @doc """
   Encapsulates full STUN/TURN request stub. Must be called as
@@ -100,7 +101,7 @@ defmodule Xirsys.Turn.Parse do
     attrs = %{
               xor_mapped_address: {conn.client_ip, conn.client_port},
               mapped_address: {conn.client_ip, conn.client_port},
-              response_origin: {conn.server_ip, conn.server_port}
+              response_origin: {Utils.server_ip(), conn.server_port}
             }
     Conn.response(conn, :success, attrs)
   end
@@ -161,7 +162,7 @@ defmodule Xirsys.Turn.Parse do
   # then this is a duplicate allocation request and can be safely
   # ignored.
   defp action(:not_allocation_exists, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, conn.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
+    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, Utils.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
     with false <- Store.exists(tup5) do
       conn
     else
@@ -171,10 +172,10 @@ defmodule Xirsys.Turn.Parse do
         {:ok, [_client, {_ip, port}, _, _]} = Store.lookup(tup5)
         Logger.debug "#{inspect port}"
         nattrs = [
-          #{:reservation_token, <<0::64>>},
-          {:xor_mapped_address, {conn.client_ip, conn.client_port}},
-          {:xor_relayed_address, {conn.server_ip, port}},
-          {:lifetime, <<600::32>>}
+          #reservation_token: <<0::64>>,
+          xor_mapped_address: {conn.client_ip, conn.client_port},
+          xor_relayed_address: {Utils.server_ip(), port},
+          lifetime: <<600::32>>
         ]
         Logger.debug "integrity = #{conn.decoded_message.integrity}"
         Logger.debug "Allocated"
@@ -214,13 +215,13 @@ defmodule Xirsys.Turn.Parse do
     AllocateClient.set_peer_details(pid, conn.decoded_message.ns, conn.decoded_message.peer_id)
     {:ok, socket, port} = AllocateClient.open_port_random(pid, opts)
     {:ok, permission_cache} = AllocateClient.get_permission_cache(pid)
-    relay_address = {conn.server_ip, port}
+    relay_address = {Utils.server_ip, port}
     AllocateClient.set_relay_address(pid, relay_address)
     Store.insert(conn.decoded_message.transactionid, pid, relay_address, tuple5, socket, permission_cache)
     nattrs = %{
       # reservation_token: <<0::64>>,
       xor_mapped_address: {conn.client_ip, conn.client_port},
-      xor_relayed_address: {conn.server_ip, port},
+      xor_relayed_address: {Utils.server_ip(), port},
       lifetime: <<600::32>>
     }
     Logger.debug "integrity = #{conn.decoded_message.integrity}"
@@ -234,7 +235,7 @@ defmodule Xirsys.Turn.Parse do
     Logger.debug "refreshing #{inspect conn.decoded_message}"
     with true <- Map.has_key?(attrs, :lifetime),
          val <- Map.get(attrs, :lifetime),
-         tuple5 <-Tuple5.to_map(Tuple5.create(conn, :"_")) do
+         tuple5 <- Tuple5.to_map(Tuple5.create(conn, :"_")) do
       do_refresh(conn, val, tuple5)
     else
       _ ->
@@ -290,8 +291,8 @@ defmodule Xirsys.Turn.Parse do
     tuple5 = Tuple5.to_map(Tuple5.create(conn, :"_"))
     with true <- Map.has_key?(attrs, :data) and Map.has_key?(attrs, :xor_peer_address),
          data <- Map.get(attrs, :data),
-         peer_address = {_, _} <- Map.get(attrs, :xor_peer_address),
-         {:ok, [client, {_relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
+         peer_address = {pip, _} <- Map.get(attrs, :xor_peer_address),
+         {:ok, [client, {relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
       Logger.debug "sending indication to peer"
       AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
       conn
@@ -319,18 +320,16 @@ defmodule Xirsys.Turn.Parse do
   ###TODO: Correctly implement custom XirSys authentication to TURN spec [RFC5766]
   defp process_integrity(msg, username) do
     Logger.info "Checking USERNAME #{inspect username}"
-    {:ok, turn_dec} =
-    case AuthClient.get_details(username) do
-      {:ok, pw, ns, peer_id} ->
-        key = username <> ":" <> @realm <> ":" <> pw
-        Logger.info "KEY = #{inspect key}"
-        {:ok, turn} = Stun.decode(msg, key)
-        {:ok, %Stun{turn | key: key, ns: ns, peer_id: peer_id}}
-      :error ->
-        Logger.info "User not found"
-        {:ok, false}
+    with {:ok, pw, ns, peer_id} <- AuthClient.get_details(username),
+         key <- username <> ":" <> @realm <> ":" <> pw,
+         _ <- Logger.info("KEY = #{inspect key}"),
+         {:ok, turn} <- Stun.decode(msg, key) do
+      %Stun{turn | key: key, ns: ns, peer_id: peer_id}
+    else
+      e ->
+        Logger.info "Integrity process failed: #{inspect e}"
+        false
     end
-    turn_dec
   end
 
   # Handles incoming channel data. We route this directly to the peers, if they exist and
@@ -358,17 +357,16 @@ defmodule Xirsys.Turn.Parse do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
         Logger.debug "Refreshing with 0 time"
         AllocateClient.refresh(client, 0)
-        conn
       {:error, :not_found} ->
-        Conn.halt(conn)
+        Conn.response(conn, 437, "Allocation Mismatch")
     end
-    Conn.response(conn, 437, "Allocation Mismatch")
   end
   defp do_refresh(conn, <<b::32>>, tuple5) when is_integer(b) do
+    b = if b > 600, do: 600, else: b
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
-        AllocateClient.refresh(client, 600)
-        new_attrs = %{lifetime: <<600::32>>}
+        AllocateClient.refresh(client, b)
+        new_attrs = %{lifetime: <<b::32>>}
         Conn.response(conn, :success, new_attrs)
       {:error, :not_found} ->
         Conn.response(conn, 437, "Allocation Mismatch")

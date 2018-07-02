@@ -33,7 +33,7 @@ defmodule Xirsys.Turn.Supervisor do
   use Supervisor
 
   alias Xirsys.Turn.{Server, Allocate, Auth}
-  alias Xirsys.Sockets.{TCP_Supervisor, TCP_Listener, UDP_Listener, SCTP_Listener}
+  alias Xirsys.Sockets.{TCP_Supervisor, TCP_Listener, UDP_Listener}
 
   def start_link(listen, cb) do
     Supervisor.start_link(__MODULE__, [listen, cb])
@@ -64,7 +64,6 @@ defmodule Xirsys.Turn.Supervisor do
 
   defp listener(:tcp), do: TCP_Listener
   defp listener(:udp), do: UDP_Listener
-  defp listener(:sctp), do: SCTP_Listener
   defp id(type, port, secure \\ ""), do: "#{type}_listener_#{secure}_#{port}"
 
 end

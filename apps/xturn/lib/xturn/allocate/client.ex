@@ -45,8 +45,8 @@ defmodule Xirsys.Turn.Allocate.Client do
   alias Xirsys.Turn.Channels.Channel, as: Channel
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
-  alias Xirsys.Utils.Socket, as: SocketHelpers
   alias Xirsys.Utils.Timing, as: Time
+  alias Xirsys.Utils.Socket, as: Utils
 
   #########################################################################################################################
   # Interface functions
@@ -128,7 +128,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def send_indication(pid, {pip, pport}, <<_::binary>> = data, socket, perms) do
     case Xirsys.Turn.Cache.Store.has_key?(perms, pip) do
       true ->
-        Client.send_data(socket, pip, pport, data)
+        Client.send_data(data, pip, pport, socket)
         GenServer.cast(pid, {:log_data, data})
       _ ->
         :ok
@@ -160,7 +160,8 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "udp data sent from peer #{inspect ip}:#{inspect in_port} in genserver #{inspect self()}"
     Logger.debug "#{inspect state}"
     bytes_in =
-    with true <- Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) do
+    with true <- (Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) and require_perms())
+                  or not require_perms() do
       length = byte_size(packet)
       peer_address = {ip, in_port}
       Logger.debug "sending #{inspect length} bytes to client"
@@ -257,7 +258,8 @@ defmodule Xirsys.Turn.Allocate.Client do
 
   def terminate(reason, state) do
     Logger.info "Terminating with state : #{inspect reason}"
-    :gen_udp.close(state.relayed_socket)
+    if (state.relayed_socket),
+      do: :gen_udp.close(state.relayed_socket)
     Xirsys.Turn.Cache.Store.keys(state.channels)
     |> Channels.delete()
     Xirsys.Turn.Cache.Store.terminate(state.channels)
@@ -270,12 +272,19 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   defp open_port_call({policy, opts}, _from, state) do
-    case SocketHelpers.open_turn_port(state.tuple5.server_address, policy, opts) do
+    case Utils.open_turn_port(Utils.server_local_ip(), policy, opts) do
       {:ok, socket} ->
         {:ok, port} = :inet.port(socket)
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
       {:error, reason} ->
         {:reply, {:error, reason}, state, Time.milliseconds_left(state)}
+    end
+  end
+
+  defp require_perms() do
+    case Application.get_env(:xturn, :permissions) do
+      %{required: required} -> required
+      _ -> true
     end
   end
 
@@ -285,7 +294,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     send_data(msg, t5.client_address, t5.client_port, state)
   end
   def send_data(msg, cip, cport, state) when is_map(state) do
-    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on socket #{inspect state.relayed_socket}"
+    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
     :gen_udp.send(state.relayed_socket, cip, cport, msg)
   end
   def send_data(msg, cip, cport, socket) do

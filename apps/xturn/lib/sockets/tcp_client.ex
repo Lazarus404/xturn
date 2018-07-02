@@ -81,18 +81,18 @@ defmodule Xirsys.Sockets.TCP_Client do
 
   def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
     Logger.debug "TCP call on handle_info"
-    {:ok, cli_socket} = :ssl.transport_accept(list_socket)
-    with :ok <- :ssl.ssl_accept(cli_socket),
+    with {:ok, cli_socket} <- :ssl.transport_accept(list_socket),
+         {:ok, cli_socket} <- :ssl.handshake(cli_socket),
          {:ok, client_ip_port} <- :ssl.peername(cli_socket),
-         {:ok, server_ip_port} <- :ssl.sockname(cli_socket) do
+         {:ok, {_, sport}} <- :ssl.sockname(cli_socket) do
       Logger.debug "Client ssl accept"
       create(list_socket, cb, state.ssl)
-      set_sockopt(list_socket, cli_socket)
+      ssl_sockopt(list_socket, cli_socket)
       :ssl.setopts(cli_socket, [{:active, :once}, :binary])
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
+      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Utils.server_ip(), sport}}}}
     else
       {:error, reason} ->
-        Logger.debug "Client ssl accept error"
+        Logger.debug "Client ssl accept error: #{inspect reason}"
         {:stop, :normal, state}
     end
   end
@@ -100,13 +100,13 @@ defmodule Xirsys.Sockets.TCP_Client do
     Logger.debug "handle_info timeout #{inspect cb}"
     with {:ok, cli_socket} <- :gen_tcp.accept(list_socket),
          {:ok, client_ip_port} <- :inet.peername(cli_socket),
-         {:ok, server_ip_port} <- :inet.sockname(cli_socket) do
+         {:ok, {_, sport}} <- :inet.sockname(cli_socket) do
       Logger.debug "#{inspect list_socket}"
       create(list_socket, cb, false)
       set_sockopt(list_socket, cli_socket)
       :inet.setopts(cli_socket, [{:active, :once}, :binary])
       Logger.debug "returning from timeout"
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, server_ip_port}}}
+      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Utils.server_ip(), sport}}}}
     end
   end
 
@@ -163,6 +163,18 @@ defmodule Xirsys.Sockets.TCP_Client do
   @doc """
   Apply specific socket option for STUN connection
   """
+  def ssl_sockopt(list_sock, cli_socket) do
+    # true = :inet_db.register_socket(cli_socket, :inet_udp)
+    try do
+      {:ok, opts} = :ssl.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
+      :ssl.setopts(cli_socket, opts)
+      :ok
+    rescue
+      e ->
+        Logger.error "damn #{inspect e}"
+        close(cli_socket)
+    end
+  end
   def set_sockopt(list_sock, cli_socket) do
     true = :inet_db.register_socket(cli_socket, :inet_tcp)
     try do
@@ -184,13 +196,13 @@ defmodule Xirsys.Sockets.TCP_Client do
     :gen_tcp.send(socket, msg)
   end
 
-  def close(nil) do
-    Logger.error "Caught attempted close of nil socket"
+  defp close(nil) do
+    Logger.debug "Caught attempted close of nil socket"
   end
-  def close({:sslsocket, _, _} = socket) do
+  defp close({:sslsocket, _, _} = socket) do
     :ssl.close(socket)
   end
-  def close(socket) when socket != nil do
+  defp close(socket) when socket != nil do
     :gen_tcp.close(socket)
   end
 end
