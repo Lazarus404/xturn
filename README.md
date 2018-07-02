@@ -10,6 +10,7 @@ Supported Features
 - Full TURN RFC5766 support (except rotating nonce)
 - Full STUN RFC3489 support
 - Simple user / pass storage with Web API interface
+- WebRTC Data Channels ARE supported!
 
 Future Plans
 ===
