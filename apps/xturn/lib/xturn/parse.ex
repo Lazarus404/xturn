@@ -362,6 +362,7 @@ defmodule Xirsys.Turn.Parse do
     end
   end
   defp do_refresh(conn, <<b::32>>, tuple5) when is_integer(b) do
+    b = if b > 600, do: 600, else: b
     case Store.lookup(tuple5) do
       {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
         AllocateClient.refresh(client, b)
