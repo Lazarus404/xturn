@@ -293,19 +293,8 @@ defmodule Xirsys.Turn.Parse do
          data <- Map.get(attrs, :data),
          peer_address = {pip, _} <- Map.get(attrs, :xor_peer_address),
          {:ok, [client, {relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
-      if (pip == relay_ip) do
-        attrs = %{}
-        |> Map.put(:xor_peer_address, peer_address)
-        |> Map.put(:data, data)
-        <<tid::96>> = :crypto.strong_rand_bytes(12)
-        data =
-        %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: attrs}
-        |> Stun.encode()
-        GenServer.cast(conn.listener, {data, tuple5.client_address, tuple5.client_port})
-      else
-        Logger.debug "sending indication to peer"
-        AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
-      end
+      Logger.debug "sending indication to peer"
+      AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
       conn
     else
       {:error, _} ->
