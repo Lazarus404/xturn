@@ -37,7 +37,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   require Logger
   @vsn "0"
 
-  alias Xirsys.Utils.Socket, as: Utils
+  alias Xirsys.Utils.Socket
 
   #####
   # External API
@@ -64,7 +64,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   def handle_cast({msg, ip, port}, %{cli_socket: socket} = state) do
     # Select proper client
     Logger.debug "Dispatching TCP to #{inspect ip}:#{inspect port} | #{inspect byte_size(msg)} bytes"
-    send_msg(socket, msg)
+    Socket.send(socket, msg)
     {:noreply, state}
   end
   def handle_cast(:stop, state),
@@ -79,55 +79,29 @@ defmodule Xirsys.Sockets.TCP_Client do
     {:noreply, state}
   end
 
-  def handle_info(:timeout, %{list_socket: list_socket = {:sslsocket, _,_}, callback: cb} = state) do
-    Logger.debug "TCP call on handle_info"
-    with {:ok, cli_socket} <- :ssl.transport_accept(list_socket),
-         {:ok, cli_socket} <- :ssl.handshake(cli_socket),
-         {:ok, client_ip_port} <- :ssl.peername(cli_socket),
-         {:ok, {_, sport}} <- :ssl.sockname(cli_socket) do
-      Logger.debug "Client ssl accept"
-      create(list_socket, cb, state.ssl)
-      ssl_sockopt(list_socket, cli_socket)
-      :ssl.setopts(cli_socket, [{:active, :once}, :binary])
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Utils.server_ip(), sport}}}}
-    else
-      {:error, reason} ->
-        Logger.debug "Client ssl accept error: #{inspect reason}"
-        {:stop, :normal, state}
-    end
-  end
   def handle_info(:timeout, %{list_socket: list_socket, callback: cb} = state) do
     Logger.debug "handle_info timeout #{inspect cb}"
-    with {:ok, cli_socket} <- :gen_tcp.accept(list_socket),
-         {:ok, client_ip_port} <- :inet.peername(cli_socket),
-         {:ok, {_, sport}} <- :inet.sockname(cli_socket) do
+    with {:ok, cli_socket} <- Socket.handshake(list_socket),
+         {:ok, client_ip_port} <- Socket.peername(cli_socket),
+         {:ok, {_, sport}} <- Socket.sockname(cli_socket) do
       Logger.debug "#{inspect list_socket}"
       create(list_socket, cb, false)
-      set_sockopt(list_socket, cli_socket)
-      :inet.setopts(cli_socket, [{:active, :once}, :binary])
+      Socket.set_sockopt(list_socket, cli_socket)
+      Socket.setopts(cli_socket)
       Logger.debug "returning from timeout"
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Utils.server_ip(), sport}}}}
+      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Socket.server_ip(), sport}}}}
     end
   end
 
   @doc """
   Message handler for incoming STUN packets
   """
-  def handle_info({:ssl, client, data}, state) do
-    Logger.debug "handle_info ssl"
-    with {:ok, ip_port} <- :ssl.peername(client) do
-      Logger.debug "TLS called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
-      new_buffer = Utils.process_buffer(data, state.turn_msg_buffer, state.addr, state.callback)
-      :ssl.setopts(client, [{:active, :once}, :binary])
-      {:noreply, %{state | :turn_msg_buffer => new_buffer}}
-    end
-  end
-  def handle_info({:tcp, client, data}, state) do
+  def handle_info({_, _client, data}, %{cli_socket: socket} = state) do
     Logger.debug "handle_info tcp"
-    with {:ok, ip_port} <- :inet.peername(client) do
+    with {:ok, ip_port} <- Socket.peername(socket) do
       Logger.debug "TCP called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
-      new_buffer = Utils.process_buffer(data, state.turn_msg_buffer, state.addr, state.callback)
-      :inet.setopts(client, [{:active, :once}, :binary])
+      new_buffer = Socket.process_buffer(data, state.turn_msg_buffer, state.addr, state.callback)
+      Socket.setopts(socket)
       {:noreply, %{state | :turn_msg_buffer => new_buffer}}
     end
   end
@@ -146,63 +120,17 @@ defmodule Xirsys.Sockets.TCP_Client do
 
   def terminate(reason, %{cli_socket: socket, list_socket: list_socket, callback: cb, accepted: false, ssl: ssl} = _state) do
     create(list_socket, cb, ssl)
-    close(socket)
+    Socket.close(socket)
     Logger.debug "TCP client closed: #{inspect reason}"
     :ok
   end
   def terminate(reason, %{cli_socket: socket} = _state) do
-    close(socket)
+    Socket.close(socket)
     Logger.debug "TCP client closed: #{inspect reason}"
     :ok
   end
 
   def code_change(_old_vsn, state, _extra) do
     {:ok, state}
-  end
-
-  @doc """
-  Apply specific socket option for STUN connection
-  """
-  def ssl_sockopt(list_sock, cli_socket) do
-    # true = :inet_db.register_socket(cli_socket, :inet_udp)
-    try do
-      {:ok, opts} = :ssl.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
-      :ssl.setopts(cli_socket, opts)
-      :ok
-    rescue
-      e ->
-        Logger.error "damn #{inspect e}"
-        close(cli_socket)
-    end
-  end
-  def set_sockopt(list_sock, cli_socket) do
-    true = :inet_db.register_socket(cli_socket, :inet_tcp)
-    try do
-      {:ok, opts} = :prim_inet.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
-      :prim_inet.setopts(cli_socket, opts)
-      :ok
-    rescue
-      e ->
-        Logger.error "damn #{inspect e}"
-        close(cli_socket)
-        exit({:set_sockopt, e})
-    end
-  end
-
-  def send_msg({:sslsocket, _, _} = socket, msg) do
-    :ssl.send(socket, msg)
-  end
-  def send_msg(socket, msg) do
-    :gen_tcp.send(socket, msg)
-  end
-
-  defp close(nil) do
-    Logger.debug "Caught attempted close of nil socket"
-  end
-  defp close({:sslsocket, _, _} = socket) do
-    :ssl.close(socket)
-  end
-  defp close(socket) when socket != nil do
-    :gen_tcp.close(socket)
   end
 end

@@ -46,7 +46,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
   alias Xirsys.Utils.Timing, as: Time
-  alias Xirsys.Utils.Socket, as: Utils
+  alias Xirsys.Utils.Socket
 
   #########################################################################################################################
   # Interface functions
@@ -259,7 +259,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def terminate(reason, state) do
     Logger.info "Terminating with state : #{inspect reason}"
     if (state.relayed_socket),
-      do: :gen_udp.close(state.relayed_socket)
+      do: Socket.close(state.relayed_socket)
     Xirsys.Turn.Cache.Store.keys(state.channels)
     |> Channels.delete()
     Xirsys.Turn.Cache.Store.terminate(state.channels)
@@ -272,9 +272,9 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   defp open_port_call({policy, opts}, _from, state) do
-    case Utils.open_turn_port(Utils.server_local_ip(), policy, opts) do
+    case Socket.open_turn_port(Socket.server_local_ip(), policy, opts) do
       {:ok, socket} ->
-        {:ok, port} = :inet.port(socket)
+        {:ok, port} = Socket.port(socket)
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
       {:error, reason} ->
         {:reply, {:error, reason}, state, Time.milliseconds_left(state)}
@@ -293,13 +293,13 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "Returning data on #{inspect t5.client_address}:#{inspect t5.client_port}"
     send_data(msg, t5.client_address, t5.client_port, state)
   end
-  def send_data(msg, cip, cport, state) when is_map(state) do
-    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
-    :gen_udp.send(state.relayed_socket, cip, cport, msg)
-  end
-  def send_data(msg, cip, cport, socket) do
+  def send_data(msg, cip, cport, %Socket{} = socket) do
     Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on socket #{inspect socket}"
-    :gen_udp.send(socket, cip, cport, msg)
+    Socket.send(socket, cip, cport, msg)
+  end
+  def send_data(msg, cip, cport, state) do
+    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
+    Socket.send(state.relayed_socket, cip, cport, msg)
   end
 
   def send_data_channel(channel_number, data, socket, channel_cache) do

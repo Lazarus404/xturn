@@ -35,6 +35,14 @@ defmodule Xirsys.Utils.Socket do
   """
   require Logger
   alias Xirsys.Turn.Conn
+  alias Xirsys.Utils.Socket
+
+  defstruct type: :udp, sock: nil
+
+  @type t :: {
+              type :: :udp | :tcp | :dtls | :tls,
+              sock :: any()
+            }
 
   @channel_msg 1
   @send_msg 0
@@ -136,7 +144,7 @@ defmodule Xirsys.Utils.Socket do
     ## BUGBUG: Should be a random port
     case :gen_udp.open(0, udp_options) do
       {:ok, socket} ->
-        {:ok, socket}
+        {:ok, %Socket{type: :udp, sock: socket}}
       {:error, reason} ->
         Logger.error "UDP open #{inspect udp_options} -> #{inspect reason}"
         {:error, reason}
@@ -148,7 +156,7 @@ defmodule Xirsys.Utils.Socket do
   defp open_free_udp_port({:range, min_port, max_port}, udp_options) when min_port <= max_port do
     case :gen_udp.open(min_port, udp_options) do
       {:ok, socket} ->
-        {:ok, socket}
+        {:ok, %Socket{type: :udp, sock: socket}}
       {:error, :eaddrinuse} ->
         policy2 = {:range, min_port + 1, max_port}
         open_free_udp_port(policy2, udp_options)
@@ -168,7 +176,7 @@ defmodule Xirsys.Utils.Socket do
   defp open_free_udp_port({:preferred, port}, udp_options) do
     case :gen_udp.open(port, udp_options) do
       {:ok, socket} ->
-        {:ok, socket}
+        {:ok, %Socket{type: :udp, sock: socket}}
       {:error, :eaddrinuse} ->
         policy2 = :random
         open_free_udp_port(policy2, udp_options)
@@ -180,4 +188,130 @@ defmodule Xirsys.Utils.Socket do
         {:error, reason}
     end
   end
+
+  def handshake(%Socket{type: :tcp, sock: socket}) do
+    with {:ok, cli_socket} <- :gen_tcp.accept(socket) do
+      {:ok, %Socket{type: :tcp, sock: cli_socket}}
+    end
+  end
+  def handshake(%Socket{type: type, sock: socket}) do
+    with {:ok, cli_socket} <- :ssl.transport_accept(socket),
+         {:ok, cli_socket} <- :ssl.handshake(cli_socket) do
+      {:ok, %Socket{type: type, sock: cli_socket}}
+    end
+  end
+
+  @doc """
+  Sends a message over an open udp socket port
+  """
+  @spec send(Socket.t, tuple(), integer(), binary()) :: :ok | {:error, term()}
+  def send(%Socket{type: :udp, sock: socket}, ip, port, msg),
+    do: :gen_udp.send(socket, ip, port, msg)
+
+  @doc """
+  Sends a message over an open accepted socket port
+  """
+  @spec send(Socket.t, binary()) :: :ok | {:error, term()}
+  def send(%Socket{type: :tcp, sock: socket}, msg),
+    do: :gen_tcp.send(socket, msg)
+  def send(%Socket{type: :dtls, sock: socket}, msg),
+    do: :ssl.send(socket, msg)
+  def send(%Socket{type: :tls, sock: socket}, msg),
+    do: :ssl.send(socket, msg)
+
+  @doc """
+  Sets one or more options for a socket.
+  """
+  @spec setopts(Socket.t) :: :ok | {:error, term()}
+  def setopts(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
+    do: :inet.setopts(socket, [{:active, :once}, :binary])
+  def setopts(%Socket{type: _, sock: socket}),
+    do: :ssl.setopts(socket, [{:active, :once}, :binary])
+
+  @spec setopts(Socket.t, list()) :: :ok | {:error, term()}
+  def setopts(%Socket{type: type, sock: socket}, opts) when type in [:udp, :tcp],
+    do: :inet.setopts(socket, opts)
+  def setopts(%Socket{type: _, sock: socket}, opts),
+    do: :ssl.setopts(socket, opts)
+
+  def getopts(%Socket{type: type, sock: socket}) when type in [:tls, :dtls],
+    do: :ssl.getopts(socket, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
+  def getopts(%Socket{sock: socket}),
+    do: :inet.getopts(socket, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
+
+  @doc """
+  Apply specific socket option for STUN connection
+  """
+  @spec set_sockopt(Socket.t, Socket.t) :: :ok
+  def set_sockopt(%Socket{type: type} = list_sock, %Socket{type: type} = cli_socket) when type in [:tls, :dtls] do
+    try do
+      {:ok, opts} = getopts(list_sock)
+      setopts(cli_socket, opts)
+      :ok
+    rescue
+      e ->
+        Logger.error "damn #{inspect e}"
+        close(cli_socket)
+    end
+  end
+  def set_sockopt(%Socket{type: :tcp} = list_sock, %Socket{type: :tcp} = cli_socket) do
+    true = register_socket(cli_socket)
+    try do
+      {:ok, opts} = getopts(list_sock)
+      setopts(cli_socket, opts)
+      :ok
+    rescue
+      e ->
+        Logger.error "damn #{inspect e}"
+        close(cli_socket)
+    end
+  end
+
+  def register_socket(%Socket{type: :tcp, sock: socket}),
+    do: :inet_db.register_socket(socket, :inet_tcp)
+
+  @doc """
+  Returns the local address and port number for a socket.
+  """
+  @spec sockname(Socket.t) :: {:ok, {tuple(), integer()}} | {:local, binary()} | {:unspec, <<>>} | {:undefined, any()} | {:error, term()}
+  def sockname(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
+    do: :inet.sockname(socket)
+  def sockname(%Socket{type: type, sock: socket}) when type in [:dtls, :tls],
+    do: :ssl.sockname(socket)
+
+  @doc """
+  Returns the peer address and port number for a socket.
+  """
+  @spec peername(Socket.t | any()) :: {:ok, {tuple(), integer()}} | {:local, binary()} | {:unspec, <<>>} | {:undefined, any()} | {:error, term()}
+  def peername(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
+    do: :inet.peername(socket)
+  def peername(%Socket{type: type, sock: socket}) when type in [:dtls, :tls],
+    do: :ssl.peername(socket)
+
+  def port(%Socket{type: :udp, sock: sock}),
+    do: :inet.port(sock)
+
+  @doc """
+  Closes a socket of any type.s
+  """
+  @spec close(Socket.t) :: :ok
+  def close(sock, reason \\ "")
+  def close(%Socket{type: :udp, sock: socket}, reason) do
+    :gen_udp.close(socket)
+    Logger.debug "UDP listener closed: #{inspect reason}"
+  end
+  def close(%Socket{type: :tcp, sock: socket}, reason) do
+    :gen_tcp.close(socket)
+    Logger.debug "UDP listener closed: #{inspect reason}"
+  end
+  def close(%Socket{type: :dtls, sock: socket}, reason) do
+    :ssl.close(socket)
+    Logger.debug "DTLS listener closed: #{inspect reason}"
+  end
+  def close(%Socket{type: :tls, sock: socket}, reason) do
+    :ssl.close(socket)
+    Logger.debug "TLS listener closed: #{inspect reason}"
+  end
+  def close(nil, _),
+    do: Logger.debug "Caught attempted close of nil socket"
 end

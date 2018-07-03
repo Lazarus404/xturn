@@ -36,6 +36,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
   """
   use GenServer
   require Logger
+  alias Xirsys.Utils.Socket
   @vsn "0"
 
   @buf_size 1024*1024*16
@@ -81,16 +82,8 @@ defmodule Xirsys.Sockets.TCP_Listener do
     {:stop, :normal, state}
   end
 
-  def terminate(reason, %{:listener => listener, ssl: true} = _state) do
-    Logger.debug "TLS listener: terminating"
-    :ssl.close(listener)
-    Logger.debug "TLS listener closed: #{reason}"
-    :ok
-  end
   def terminate(reason, %{:listener => listener} = _state) do
-    Logger.debug "TCP listener: terminating"
-    :gen_tcp.close(listener)
-    Logger.debug "TCP listener closed: #{reason}"
+    Socket.close(listener)
     :ok
   end
 
@@ -104,9 +97,11 @@ defmodule Xirsys.Sockets.TCP_Listener do
         true ->
           {:ok, certs} = :application.get_env(:certs)
           nopts = opts ++ certs
-          :ssl.listen(port, nopts)
+          {:ok, sock} = :ssl.listen(port, nopts)
+          {:ok, %Socket{type: :tls, sock: sock}}
         _ ->
-          :gen_tcp.listen(port, opts)
+          {:ok, sock} = :gen_tcp.listen(port, opts)
+          {:ok, %Socket{type: :tcp, sock: sock}}
       end
       Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
       Logger.info "TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]"
