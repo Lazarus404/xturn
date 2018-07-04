@@ -54,7 +54,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     """
     @vsn "0"
     defstruct id: nil,
-              listener: nil,
+              client_socket: nil,
               tuple5: nil,
               relayed_address: nil,
               relayed_socket: nil,
@@ -85,13 +85,13 @@ defmodule Xirsys.Turn.Allocate.Client do
   # Interface functions
   #########################################################################################################################
 
-  def start_link(id, listener, tuple5, lifetime),
-    do: GenServer.start_link(__MODULE__, [id, listener, tuple5, lifetime])
+  def start_link(id, client_socket, tuple5, lifetime),
+    do: GenServer.start_link(__MODULE__, [id, client_socket, tuple5, lifetime])
 
-  def create(id, listener, tuple5, lifetime),
-    do: Xirsys.Turn.Allocate.Supervisor.start_child(id, listener, tuple5, lifetime)
-  def create(id, listener, tuple5),
-    do: create(id, listener, tuple5, @default_lifetime)
+  def create(id, client_socket, tuple5, lifetime),
+    do: Xirsys.Turn.Allocate.Supervisor.start_child(id, client_socket, tuple5, lifetime)
+  def create(id, client_socket, tuple5),
+    do: create(id, client_socket, tuple5, @default_lifetime)
 
   def destroy(pid),
     do: Xirsys.Turn.Allocate.Supervisor.terminate_child(pid)
@@ -172,12 +172,12 @@ defmodule Xirsys.Turn.Allocate.Client do
   # OTP functions
   #########################################################################################################################
 
-  def init([id, listener, tuple5, lifetime]) do
+  def init([id, client_socket, tuple5, lifetime]) do
     {:ok, perms} = Xirsys.Turn.Cache.Store.init(@permission_lifetime)
     {:ok, chans} = Xirsys.Turn.Cache.Store.init(@channel_lifetime, fn id -> Logger.info "CHANNEL #{inspect id} REMOVED" end )
     {:ok, %State{
                   id: id,
-                  listener: listener,
+                  client_socket: client_socket,
                   tuple5: tuple5,
                   refresh_time: Time.now(),
                   lifetime: lifetime,
@@ -212,7 +212,7 @@ defmodule Xirsys.Turn.Allocate.Client do
           conn = %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: data_attrs}
           Stun.encode(conn)
       end
-      GenServer.cast(state.listener, {data, state.tuple5.client_address, state.tuple5.client_port})
+      Socket.send(state.client_socket, data, state.tuple5.client_address, state.tuple5.client_port)
       byte_size(data)
     else
       _ ->

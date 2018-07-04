@@ -211,7 +211,7 @@ defmodule Xirsys.Turn.Commands do
             else: []
     tuple5 = Tuple5.create(conn, proto)
     lifetime = 600
-    {:ok, pid} = AllocateClient.create(conn.decoded_message.transactionid, conn.listener, tuple5, lifetime)
+    {:ok, pid} = AllocateClient.create(conn.decoded_message.transactionid, conn.client_socket, tuple5, lifetime)
     AllocateClient.set_peer_details(pid, conn.decoded_message.ns, conn.decoded_message.peer_id)
     {:ok, socket, port} = AllocateClient.open_port_random(pid, opts)
     {:ok, permission_cache} = AllocateClient.get_permission_cache(pid)

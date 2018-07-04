@@ -113,6 +113,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
     spawn(state.callback, :process_message, [%Conn{
         message: msg,
         listener: self(),
+        client_socket: state.socket,
         client_ip: fip,
         client_port: fport,
         server_ip: Socket.server_ip(),

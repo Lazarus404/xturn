@@ -38,6 +38,7 @@ defmodule Xirsys.Turn.Conn do
   alias Xirsys.Stun
   alias Xirsys.Turn.Conn
   alias Xirsys.Turn.Response
+  alias Xirsys.Sockets.Socket
 
   @vsn "0"
   @realm "xirsys.com"
@@ -47,6 +48,7 @@ defmodule Xirsys.Turn.Conn do
   defstruct listener: nil,
             message: nil,
             decoded_message: nil,
+            client_socket: nil,
             client_ip: nil,
             client_port: nil,
             server_ip: nil,
@@ -113,11 +115,11 @@ defmodule Xirsys.Turn.Conn do
 
   @spec respond(Conn) :: :ok
   defp respond(%Conn{decoded_message: %Stun{} = turn} = conn) do
-    case conn.listener do
+    case conn.client_socket do
       nil ->
         conn
-      listener ->
-        GenServer.cast(listener, {Stun.encode(turn, turn.key), conn.client_ip, conn.client_port})
+      client_socket ->
+        Socket.send(client_socket, Stun.encode(turn, turn.key), conn.client_ip, conn.client_port)
         conn
     end
   end

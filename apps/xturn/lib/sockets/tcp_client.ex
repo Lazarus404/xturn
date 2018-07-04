@@ -100,7 +100,7 @@ defmodule Xirsys.Sockets.TCP_Client do
     Logger.debug "handle_info tcp"
     with {:ok, ip_port} <- Socket.peername(socket) do
       Logger.debug "TCP called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
-      new_buffer = Socket.process_buffer(data, state.turn_msg_buffer, state.addr, state.callback)
+      new_buffer = Socket.process_buffer(socket, data, state.turn_msg_buffer, state.addr, state.callback)
       Socket.setopts(socket)
       {:noreply, %{state | :turn_msg_buffer => new_buffer}}
     end

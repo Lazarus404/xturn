@@ -73,10 +73,10 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   With new data, see if we can process a message on the buffer
   """
-  @spec process_buffer(binary(), binary(), tuple(), function()) :: binary()
-  def process_buffer(data, buffer, addr, callback) do
+  @spec process_buffer(any(), binary(), binary(), tuple(), function()) :: binary()
+  def process_buffer(socket, data, buffer, addr, callback) do
     bin = <<buffer::binary, data::binary>>
-    process_buffer(bin, addr, callback)
+    process_buffer(socket, bin, addr, callback)
   end
 
   @doc """
@@ -211,33 +211,33 @@ defmodule Xirsys.Sockets.Socket do
   # Private functions
   # ----------------------------
 
-  defp process_buffer(bin, _, _) when byte_size(bin) <= 4, do: bin
-  defp process_buffer(<<type::2, _::14, body_bytes::16, _body::binary-size(body_bytes), _::binary>> = bin, addr, callback) when type == @send_msg
+  defp process_buffer(_, bin, _, _) when byte_size(bin) <= 4, do: bin
+  defp process_buffer(socket, <<type::2, _::14, body_bytes::16, _body::binary-size(body_bytes), _::binary>> = bin, addr, callback) when type == @send_msg
                                                                                                                              or type == @channel_msg do
     msg_bytes = pad_body_bytes(type, body_bytes)
-    process_data(bin, msg_bytes, addr, callback)
+    process_data(bin, msg_bytes, socket, addr, callback)
   end
-  defp process_buffer(<<type::2, _::14, _body_bytes::16, _::binary>> = bin, _, _) when type == @send_msg or type == @channel_msg,
+  defp process_buffer(_, <<type::2, _::14, _body_bytes::16, _::binary>> = bin, _, _) when type == @send_msg or type == @channel_msg,
     do: bin # message is not yet long enough
-  defp process_buffer(<<type::2, _::14, _::binary>> = bin, _, _) do
+  defp process_buffer(_, <<type::2, _::14, _::binary>> = bin, _, _) do
     Logger.error "Unknown message type : #{inspect type}"
     bin
   end
 
   # With a packet header extracted from the buffer,  see
   # if we can process it
-  defp process_data(bin, required_size, _, _) when required_size > byte_size(bin), do: bin # need more data
-  defp process_data(bin, required_size, {{cip, cport}, {sip, sport}}, callback) when required_size == byte_size(bin) do
-    process_msg(callback, bin, {self(), cip, cport, sip, sport})
+  defp process_data(bin, required_size, _, _, _) when required_size > byte_size(bin), do: bin # need more data
+  defp process_data(bin, required_size, socket, {{cip, cport}, {sip, sport}}, callback) when required_size == byte_size(bin) do
+    process_msg(callback, bin, {self(), socket, cip, cport, sip, sport})
     <<>>
   end
-  defp process_data(bin, required_size, {{cip, cport}, {sip, sport}} = addr, callback) do
+  defp process_data(bin, required_size, socket, {{cip, cport}, {sip, sport}} = addr, callback) do
     # parse TURN message
     <<turn::binary-size(required_size), tail::binary>> = bin
     Logger.debug "Tail is: #{inspect tail}"
     #ns = process_turn_msg(turn, %{state | turn_msg_buffer: bin})
-    process_msg(callback, turn, {self(), cip, cport, sip, sport})
-    process_buffer(tail, addr, callback)
+    process_msg(callback, turn, {self(), socket, cip, cport, sip, sport})
+    process_buffer(socket, tail, addr, callback)
   end
 
   defp pad_body_bytes(@channel_msg, bytes),
@@ -253,10 +253,11 @@ defmodule Xirsys.Sockets.Socket do
   end
 
   # Calls the callback handler
-  defp process_msg(cb, msg, {listener, fip, fport, tip, tport}) do
+  defp process_msg(cb, msg, {listener, socket, fip, fport, tip, tport}) do
     apply cb, :process_message, [%Conn{
         message: msg,
         listener: listener,
+        client_socket: socket,
         client_ip: fip,
         client_port: fport,
         server_ip: tip,
