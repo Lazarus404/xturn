@@ -3,8 +3,8 @@ defmodule Xturn.Mixfile do
 
   def project() do
     [ app: :xturn,
-      version: "0.0.1",
-      elixir: "~> 1.3.2",
+      version: "0.1.0",
+      elixir: "~> 1.6.6",
       name: "xturn",
       source_url: "https://github.com/xirdev/xturn",
       escript: [ main_module: Xirsys.Turn ],
@@ -37,6 +37,7 @@ defmodule Xturn.Mixfile do
       {:xturnlib,    in_umbrella: true},
       {:poolboy,     "~> 1.5", override: true},
       {:maru,        "~> 0.13"},
+      {:jason,       "~> 1.0"},
       {:cowboy,      "~> 2.3"} ]
   end
 end

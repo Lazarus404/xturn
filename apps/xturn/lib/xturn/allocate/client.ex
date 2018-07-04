@@ -230,10 +230,14 @@ defmodule Xirsys.Turn.Allocate.Client do
     do: open_port_call({policy, opts}, from, state)
   def handle_call(:get_permission_cache, _from, state),
     do: {:reply, {:ok, state.permissions}, state, Time.milliseconds_left(state)}
-  def handle_call(:dont_fragment, _from, state),
-    do: :inet.setopts(state.relayed_socket,[{:raw,0,10,<<2::native-size(32)>>}])
-  def handle_call(:clear_header, _from, state),
-    do: :inet.setopts(state.relayed_socket,[{:raw,0,10,<<0::native-size(32)>>}])
+  def handle_call(:dont_fragment, _from, state) do
+    res = :inet.setopts(state.relayed_socket,[{:raw,0,10,<<2::native-size(32)>>}])
+    {:reply, res, state, Time.milliseconds_left(state)}
+  end
+  def handle_call(:clear_header, _from, state) do
+    res = :inet.setopts(state.relayed_socket,[{:raw,0,10,<<0::native-size(32)>>}])
+    {:reply, res, state, Time.milliseconds_left(state)}
+  end
   def handle_call({:add_channel, channel_number, peer_address}, _from, state) do
     channel = %Channel{id: channel_number,
                        tuple5: state.tuple5,
