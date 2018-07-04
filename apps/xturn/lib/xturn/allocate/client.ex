@@ -159,11 +159,11 @@ defmodule Xirsys.Turn.Allocate.Client do
   def send_indication(pid, {_, _} = peer_address, <<_::binary>> = data, nil, _perms),
     do: GenServer.cast(pid, {:send_indication, peer_address, data})
   def send_indication(pid, {pip, pport}, <<_::binary>> = data, socket, perms) do
-    case Xirsys.Turn.Cache.Store.has_key?(perms, pip) do
-      true ->
+    cond do
+      (not require_perms()) or Xirsys.Turn.Cache.Store.has_key?(perms, pip) ->
         Client.send_data(data, pip, pport, socket)
         GenServer.cast(pid, {:log_data, data})
-      _ ->
+      true ->
         :ok
     end
   end
@@ -193,8 +193,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "udp data sent from peer #{inspect ip}:#{inspect in_port} in genserver #{inspect self()}"
     Logger.debug "#{inspect state}"
     bytes_in =
-    with true <- (Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) and require_perms())
-                  or not require_perms() do
+    with true <- (not require_perms()) or Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) do
       length = byte_size(packet)
       peer_address = {ip, in_port}
       Logger.debug "sending #{inspect length} bytes to client"

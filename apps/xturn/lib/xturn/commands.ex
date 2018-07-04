@@ -294,8 +294,7 @@ defmodule Xirsys.Turn.Commands do
          peer_address = {pip, port} <- Map.get(attrs, :xor_peer_address),
          {:ok, [client, {relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
       Logger.debug "sending indication to peer"
-      # AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
-      Socket.send(socket, data, pip, port)
+      AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
       conn
     else
       {:error, _} ->
