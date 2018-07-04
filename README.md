@@ -26,6 +26,8 @@ Future Plans
 
 Changelog
 ===
+04-07-2018 - Aside from some cleanup, client calls were short-cicuited through direct passing of the client socket ref, rather than the GenServer pid
+
 02-07-2018 - Get working with test.webrtc.org
 
 26-06-2018 - Add DTLS support
