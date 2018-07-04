@@ -29,7 +29,7 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Turn.Parse do
+defmodule Xirsys.Turn.Commands do
   @moduledoc """
   provides handers for TURN over STUN
   """
@@ -54,7 +54,7 @@ defmodule Xirsys.Turn.Parse do
   alias Xirsys.Turn.Allocate.Client, as: AllocateClient
   alias Xirsys.Turn.Auth.Client, as: AuthClient
   alias Xirsys.Stun
-  alias Xirsys.Utils.Socket
+  alias Xirsys.Sockets.Socket
 
   @doc """
   Encapsulates full STUN/TURN request stub. Must be called as

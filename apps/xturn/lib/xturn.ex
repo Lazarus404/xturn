@@ -38,7 +38,7 @@ defmodule Xirsys.Turn do
   def start(_type, _args) do
     Xirsys.Turn.Allocate.Store.init()
     Xirsys.Turn.Channels.Store.init()
-    Xirsys.Turn.Supervisor.start_link(Application.get_env(:xturn, :listen), Xirsys.Turn.Parse)
+    Xirsys.Turn.Supervisor.start_link(Application.get_env(:xturn, :listen), Xirsys.Turn.Commands)
   end
 
   def main(argv) do

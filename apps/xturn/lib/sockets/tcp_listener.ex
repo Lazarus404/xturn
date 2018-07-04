@@ -36,7 +36,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
   """
   use GenServer
   require Logger
-  alias Xirsys.Utils.Socket
+  alias Xirsys.Sockets.Socket
   @vsn "0"
 
   @buf_size 1024*1024*16

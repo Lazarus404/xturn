@@ -29,13 +29,13 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Utils.Socket do
+defmodule Xirsys.Sockets.Socket do
   @moduledoc """
   Socket protocol helpers
   """
   require Logger
   alias Xirsys.Turn.Conn
-  alias Xirsys.Utils.Socket
+  alias Xirsys.Sockets.Socket
 
   defstruct type: :udp, sock: nil
 

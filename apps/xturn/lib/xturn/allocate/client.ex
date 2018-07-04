@@ -40,13 +40,46 @@ defmodule Xirsys.Turn.Allocate.Client do
   @channel_lifetime 600_000
   @permission_lifetime 300_000
 
-  alias Xirsys.Turn.Allocate.{State, Store, Client}
+  alias Xirsys.Turn.Allocate.{Store, Client}
   alias Xirsys.Turn.Channels.Store, as: Channels
   alias Xirsys.Turn.Channels.Channel, as: Channel
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
   alias Xirsys.Utils.Timing, as: Time
-  alias Xirsys.Utils.Socket
+  alias Xirsys.Sockets.Socket
+
+  defmodule State do
+    @moduledoc """
+    TURN allocation state object
+    """
+    @vsn "0"
+    defstruct id: nil,
+              listener: nil,
+              tuple5: nil,
+              relayed_address: nil,
+              relayed_socket: nil,
+              requested_transport: :udp,
+              dont_fragment: false,
+              reserve_port: false,
+              next_port: false,
+
+              username: nil,
+              passhash: nil,
+              nonce: nil,
+
+              refresh_time: nil,
+              lifetime: 600,
+
+              permissions: nil,
+              channels: nil,
+
+              bytes_in: 0,
+              bytes_out: 0,
+              peer_started: nil,
+              peer_ended: nil,
+              peer_id: nil,
+              ns: nil
+  end
 
   #########################################################################################################################
   # Interface functions

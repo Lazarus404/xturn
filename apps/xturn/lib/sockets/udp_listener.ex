@@ -44,7 +44,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
          sndbuf: @buf_size]
 
   alias Xirsys.Turn.Conn
-  alias Xirsys.Utils.Socket
+  alias Xirsys.Sockets.Socket
 
   #####
   # External API
