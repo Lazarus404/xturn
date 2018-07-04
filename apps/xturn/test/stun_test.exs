@@ -4,7 +4,8 @@ defmodule StunTest do
   require Logger
 
   alias Xirsys.Stun
-  alias Xirsys.Turn.{Conn, Parse}
+  alias Xirsys.Turn.{Conn, Commands}
+  alias Xirsys.Sockets.Socket
 
   @conn %Conn{
     client_ip: {127,0,0,2},
@@ -28,14 +29,14 @@ defmodule StunTest do
   end
 
   test "returns valid response", %{stun: stun} do
-    conn = Parse.process_message(%Conn{@conn | message: stun})
+    conn = Commands.process_message(%Conn{@conn | message: stun})
     assert conn.response.class == :success,
       "STUN request should be valid"
     assert Map.get(conn.response.attrs || %{}, :xor_mapped_address) == {@conn.client_ip, @conn.client_port},
       "must return a xor-mapped-address"
     assert Map.get(conn.response.attrs || %{}, :mapped_address) == {@conn.client_ip, @conn.client_port},
       "must return a mapped-address"
-    assert Map.get(conn.response.attrs || %{}, :response_origin) == {@conn.server_ip, @conn.server_port},
+    assert Map.get(conn.response.attrs || %{}, :response_origin) == {Socket.server_ip, @conn.server_port},
       "must return a response-origin"
   end
 

@@ -5,8 +5,8 @@ config :logger,
   compile_time_purge_level: :debug
 
 config :xturn,
-  authentication: %{required: true},
-  permissions: %{required: false},
+  authentication: %{required: false},
+  permissions: %{required: true},
   realm: "xirsys.com",
   listen: [
             {:udp, '0.0.0.0', 3478},

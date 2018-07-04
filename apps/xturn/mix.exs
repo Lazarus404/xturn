@@ -17,7 +17,8 @@ defmodule Xturn.Mixfile do
                      :logger,
                      :ssl,
                      :xmerl,
-                     :exts
+                     :exts,
+                     :maru
                     ],
       registered: [ Xirsys.Turn.Server ],
       mod: { Xirsys.Turn, [] },

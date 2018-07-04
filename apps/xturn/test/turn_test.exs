@@ -4,9 +4,10 @@ defmodule TurnTest do
   require Logger
 
   alias Xirsys.Stun
-  alias Xirsys.Turn.{Conn, Parse}
+  alias Xirsys.Turn.{Conn, Commands}
   alias Xirsys.Turn.Auth.Client, as: Auth
   alias Xirsys.Turn.Allocate.Client, as: AllocateClient
+  alias Xirsys.Sockets.Socket
 
   @conn %Conn{
     client_ip: {127,0,0,2},
@@ -34,7 +35,7 @@ defmodule TurnTest do
     # create encoded STUN packet
     stun = Stun.encode(@allocation)
     # process
-    conn = Parse.process_message(%Conn{@conn | message: stun})
+    conn = Commands.process_message(%Conn{@conn | message: stun})
 
     # response should be valid and contain reflexive IP and Port
     assert conn.response.class == :success,
@@ -45,7 +46,7 @@ defmodule TurnTest do
       "response has valid xor-relayed-address"
 
     # check an integer base port id is attributed
-    ip = @conn.server_ip
+    ip = Socket.server_ip
     {^ip, port} = Map.get(conn.response.attrs, :xor_relayed_address)
 
     assert is_integer(port),
@@ -68,7 +69,7 @@ defmodule TurnTest do
 
     # create encoded STUN packet
     stun = Stun.encode(%Stun{@allocation | attrs: attrs})
-    conn = Parse.process_message(%Conn{@conn | message: stun, client_ip: @alternate_ip, force_auth: true})
+    conn = Commands.process_message(%Conn{@conn | message: stun, client_ip: @alternate_ip, force_auth: true})
 
     # the first request should fail, but we need the returned realm to authenticate
     refute conn.response.class == :success,
@@ -88,7 +89,7 @@ defmodule TurnTest do
     Auth.add_user(@username, @password, "/", "server")
 
     # second pass
-    conn = Parse.process_message(%Conn{@conn | message: stun, client_ip: @alternate_ip, force_auth: true})
+    conn = Commands.process_message(%Conn{@conn | message: stun, client_ip: @alternate_ip, force_auth: true})
 
     # this should now pass and have an established relay address / port
     assert conn.response.class == :success,
@@ -99,7 +100,7 @@ defmodule TurnTest do
       "response has valid xor-relayed-address"
 
     # validate an assigned port and that it's an integer
-    ip = @conn.server_ip
+    ip = Socket.server_ip()
     {^ip, port} = Map.get(conn.response.attrs, :xor_relayed_address)
 
     assert is_integer(port),
