@@ -191,21 +191,18 @@ defmodule Xirsys.Turn.Allocate.Client do
     do: {:stop, :normal, state}
   def handle_info({:udp, socket, ip, in_port, packet}, state) do
     Logger.debug "udp data sent from peer #{inspect ip}:#{inspect in_port} in genserver #{inspect self()}"
-    Logger.debug "#{inspect state}"
-    bytes_in =
+    Socket.setopts(socket)
     with true <- (not require_perms()) or Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) do
       len = byte_size(packet)
       Logger.debug "sending #{inspect len} bytes to client"
       data = channel_or_stun(packet, {ip, in_port}, state.tuple5, len)
       Socket.send(state.client_socket, data, state.tuple5.client_address, state.tuple5.client_port)
-      byte_size(data)
+      {:noreply, %State{state | bytes_in: state.bytes_in + byte_size(data)}, Time.milliseconds_left(state)}
     else
       _ ->
         Logger.info "peer permission not available #{inspect state.tuple5}"
-        0
+        {:noreply, state, Time.milliseconds_left(state)}
     end
-    Socket.setopts(socket)
-    {:noreply, %State{state | bytes_in: state.bytes_in + bytes_in}, Time.milliseconds_left(state)}
   end
 
   def handle_call({:open_port, :random = policy, opts}, from, state),
@@ -264,14 +261,13 @@ defmodule Xirsys.Turn.Allocate.Client do
     {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, Time.milliseconds_left(state)}
   end
   def handle_cast({:send_indication, {pip, pport} = _peer_address, data}, state) do
-    bytes_out = case Xirsys.Turn.Cache.Store.has_key?(state.permissions, pip) do
-      true ->
-        send_data(data, pip, pport, state)
-        byte_size(data)
+    with true <- Xirsys.Turn.Cache.Store.has_key?(state.permissions, pip) do
+      send_data(data, pip, pport, state)
+      {:noreply, %State{state | bytes_out: state.bytes_out + byte_size(data)}, Time.milliseconds_left(state)}
+    else
       _ ->
-        0
+        {:noreply, state, Time.milliseconds_left(state)}
     end
-    {:noreply, %State{state | bytes_out: state.bytes_out + bytes_out}, Time.milliseconds_left(state)}
   end
   def handle_cast({:log_data, data}, state) do
     bytes_out = byte_size(data)
