@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Sockets.UDP_Listener do
   @moduledoc """
@@ -37,11 +37,8 @@ defmodule Xirsys.Sockets.UDP_Listener do
   require Logger
   @vsn "0"
 
-  @buf_size 1024*1024*1024
-  @opts [active: false,
-         buffer: @buf_size,
-         recbuf: @buf_size,
-         sndbuf: @buf_size]
+  @buf_size 1024 * 1024 * 1024
+  @opts [active: false, buffer: @buf_size, recbuf: @buf_size, sndbuf: @buf_size]
 
   alias Xirsys.Turn.Conn
   alias Xirsys.Sockets.Socket
@@ -57,7 +54,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   def start_link(cb, ip, port, ssl) do
-    GenServer.start_link(__MODULE__, [cb, ip, port, ssl], [debug: [:statistics]])
+    GenServer.start_link(__MODULE__, [cb, ip, port, ssl], debug: [:statistics])
   end
 
   @doc """
@@ -77,7 +74,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   def handle_call(other, _from, state) do
-    Logger.error "UDP listener: strange call: #{inspect other}"
+    Logger.error("UDP listener: strange call: #{inspect(other)}")
     {:noreply, state}
   end
 
@@ -94,7 +91,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   def handle_cast(other, state) do
-    Logger.error "UDP listener: strange cast: #{inspect other}"
+    Logger.error("UDP listener: strange cast: #{inspect(other)}")
     {:noreply, state}
   end
 
@@ -108,9 +105,11 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Message handler for incoming UDP STUN packets
   """
   def handle_info({:udp, _fd, fip, fport, msg}, state) do
-    Logger.debug "UDP called #{inspect byte_size(msg)} bytes"
+    Logger.debug("UDP called #{inspect(byte_size(msg))} bytes")
     {:ok, {_, tport}} = Socket.sockname(state.socket)
-    spawn(state.callback, :process_message, [%Conn{
+
+    spawn(state.callback, :process_message, [
+      %Conn{
         message: msg,
         listener: self(),
         client_socket: state.socket,
@@ -118,14 +117,16 @@ defmodule Xirsys.Sockets.UDP_Listener do
         client_port: fport,
         server_ip: Socket.server_ip(),
         server_port: tport
-      }])
+      }
+    ])
+
     Socket.setopts(state.socket)
     :erlang.process_flag(:priority, :high)
     {:noreply, state}
   end
 
   def handle_info(info, state) do
-    Logger.error "UDP listener: strange info: #{inspect info}"
+    Logger.error("UDP listener: strange info: #{inspect(info)}")
     {:noreply, state}
   end
 
@@ -139,7 +140,8 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   defp open_socket(cb, ip, port, ssl, opts) do
-    Logger.info "UDP listener #{inspect self()} started at [#{:inet_parse.ntoa(ip)}:#{port}]"
+    Logger.info("UDP listener #{inspect(self())} started at [#{:inet_parse.ntoa(ip)}:#{port}]")
+
     with true <- valid_ip?(ip) do
       case ssl do
         true ->
@@ -149,6 +151,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
           fd = %Socket{type: :dtls, sock: fd}
           Xirsys.Sockets.TCP_Client.create(fd, cb, ssl)
           {:ok, %{listener: fd, ssl: ssl}}
+
         _ ->
           {:ok, fd} = :gen_udp.open(port, opts)
           {:ok, %{socket: %Socket{type: :udp, sock: fd}, callback: cb, ssl: ssl}, 0}

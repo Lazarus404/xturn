@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Sockets.TCP_Client do
   @moduledoc """
@@ -54,8 +54,18 @@ defmodule Xirsys.Sockets.TCP_Client do
   end
 
   def init([socket, callback, ssl]) do
-    Logger.debug "Client init"
-    {:ok, %{callback: callback, accepted: false, list_socket: socket, cli_socket: nil, addr: nil, turn_msg_buffer: <<>>, ssl: ssl}, 0}
+    Logger.debug("Client init")
+
+    {:ok,
+     %{
+       callback: callback,
+       accepted: false,
+       list_socket: socket,
+       cli_socket: nil,
+       addr: nil,
+       turn_msg_buffer: <<>>,
+       ssl: ssl
+     }, 0}
   end
 
   @doc """
@@ -63,33 +73,46 @@ defmodule Xirsys.Sockets.TCP_Client do
   """
   def handle_cast({msg, ip, port}, %{cli_socket: socket} = state) do
     # Select proper client
-    Logger.debug "Dispatching TCP to #{inspect ip}:#{inspect port} | #{inspect byte_size(msg)} bytes"
+    Logger.debug(
+      "Dispatching TCP to #{inspect(ip)}:#{inspect(port)} | #{inspect(byte_size(msg))} bytes"
+    )
+
     Socket.send(socket, msg)
     {:noreply, state}
   end
+
   def handle_cast(:stop, state),
     do: {:stop, :normal, state}
+
   def handle_cast(other, state) do
-    Logger.debug "TCP client: strange cast: #{inspect other}"
+    Logger.debug("TCP client: strange cast: #{inspect(other)}")
     {:noreply, state}
   end
 
   def handle_call(other, _from, state) do
-    Logger.debug "TCP client: strange call: #{inspect other}"
+    Logger.debug("TCP client: strange call: #{inspect(other)}")
     {:noreply, state}
   end
 
   def handle_info(:timeout, %{list_socket: list_socket, callback: cb} = state) do
-    Logger.debug "handle_info timeout #{inspect cb}"
+    Logger.debug("handle_info timeout #{inspect(cb)}")
+
     with {:ok, cli_socket} <- Socket.handshake(list_socket),
          {:ok, client_ip_port} <- Socket.peername(cli_socket),
          {:ok, {_, sport}} <- Socket.sockname(cli_socket) do
-      Logger.debug "#{inspect list_socket}"
+      Logger.debug("#{inspect(list_socket)}")
       create(list_socket, cb, false)
       Socket.set_sockopt(list_socket, cli_socket)
       Socket.setopts(cli_socket)
-      Logger.debug "returning from timeout"
-      {:noreply, %{state | accepted: true, cli_socket: cli_socket, addr: {client_ip_port, {Socket.server_ip(), sport}}}}
+      Logger.debug("returning from timeout")
+
+      {:noreply,
+       %{
+         state
+         | accepted: true,
+           cli_socket: cli_socket,
+           addr: {client_ip_port, {Socket.server_ip(), sport}}
+       }}
     end
   end
 
@@ -97,36 +120,48 @@ defmodule Xirsys.Sockets.TCP_Client do
   Message handler for incoming STUN packets
   """
   def handle_info({_, _client, data}, %{cli_socket: socket} = state) do
-    Logger.debug "handle_info tcp"
+    Logger.debug("handle_info tcp")
+
     with {:ok, ip_port} <- Socket.peername(socket) do
-      Logger.debug "TCP called from #{inspect ip_port} with #{inspect byte_size(data)} BYTES"
-      new_buffer = Socket.process_buffer(socket, data, state.turn_msg_buffer, state.addr, state.callback)
+      Logger.debug("TCP called from #{inspect(ip_port)} with #{inspect(byte_size(data))} BYTES")
+
+      new_buffer =
+        Socket.process_buffer(socket, data, state.turn_msg_buffer, state.addr, state.callback)
+
       Socket.setopts(socket)
       {:noreply, %{state | :turn_msg_buffer => new_buffer}}
     end
   end
+
   def handle_info({:ssl_closed, client}, state) do
-    Logger.debug "Client #{inspect client} closed connection"
+    Logger.debug("Client #{inspect(client)} closed connection")
     {:stop, :normal, state}
   end
+
   def handle_info({:tcp_closed, client}, state) do
-    Logger.debug "Client #{inspect client} closed connection"
+    Logger.debug("Client #{inspect(client)} closed connection")
     {:stop, :normal, state}
   end
+
   def handle_info(info, state) do
-    Logger.debug "TCP client: strange info: #{inspect info}"
+    Logger.debug("TCP client: strange info: #{inspect(info)}")
     {:noreply, state}
   end
 
-  def terminate(reason, %{cli_socket: socket, list_socket: list_socket, callback: cb, accepted: false, ssl: ssl} = _state) do
+  def terminate(
+        reason,
+        %{cli_socket: socket, list_socket: list_socket, callback: cb, accepted: false, ssl: ssl} =
+          _state
+      ) do
     create(list_socket, cb, ssl)
     Socket.close(socket)
-    Logger.debug "TCP client closed: #{inspect reason}"
+    Logger.debug("TCP client closed: #{inspect(reason)}")
     :ok
   end
+
   def terminate(reason, %{cli_socket: socket} = _state) do
     Socket.close(socket)
-    Logger.debug "TCP client closed: #{inspect reason}"
+    Logger.debug("TCP client closed: #{inspect(reason)}")
     :ok
   end
 

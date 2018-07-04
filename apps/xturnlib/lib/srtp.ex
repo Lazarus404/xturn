@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ### Heavily modified version of Peter Lemenkov. Big ups go to him
 ### for his excellent work in this area.
 ###
@@ -31,7 +31,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Srtp do
   require Logger
@@ -41,17 +41,24 @@ defmodule Xirsys.Srtp do
 
   defmodule Srtp_Crypto_Ctx do
     defstruct ssrc: nil,
-    roc: 0, # discard for rtcp
-    s_l: 0,
-    rtcp_idx: 0,
-    key_deriv_rate: 0,
-    ealg: nil, # SRTP_Encryption_Null, SRTP_Encryption_AESCM, SRTP_Encryption_AESF8, SRTP_Encryption_TWOF8
-    aalg: nil, # SRTP_Authentication_Null, SRTP_Authentication_Sha1_Hmac, SRTP_Authentication_Skein_Hmac
-    k_a: <<>>, # 20 bytes by default
-    k_e: <<>>, # size(master_key) by default
-    k_s: <<>>, # size(master_salt) by default
-    f8_cipher: nil,
-    tag_length: 0 # 4 bytes by default
+              # discard for rtcp
+              roc: 0,
+              s_l: 0,
+              rtcp_idx: 0,
+              key_deriv_rate: 0,
+              # SRTP_Encryption_Null, SRTP_Encryption_AESCM, SRTP_Encryption_AESF8, SRTP_Encryption_TWOF8
+              ealg: nil,
+              # SRTP_Authentication_Null, SRTP_Authentication_Sha1_Hmac, SRTP_Authentication_Skein_Hmac
+              aalg: nil,
+              # 20 bytes by default
+              k_a: <<>>,
+              # size(master_key) by default
+              k_e: <<>>,
+              # size(master_salt) by default
+              k_s: <<>>,
+              f8_cipher: nil,
+              # 4 bytes by default
+              tag_length: 0
   end
 
   @rtp_version 2
@@ -68,8 +75,11 @@ defmodule Xirsys.Srtp do
 
   def new_ctx(ssrc, ealg, aalg, master_key, master_salt, tag_length),
     do: new_ctx(ssrc, ealg, aalg, master_key, master_salt, tag_length, 0)
+
   def new_ctx(ssrc, ealg, aalg, master_key, master_salt, tag_length, key_derivation_rate) do
-    <<k_s::size(112), _::binary>> = derive_key(master_key, master_salt, @srtp_label_rtp_salt, 0, key_derivation_rate)
+    <<k_s::size(112), _::binary>> =
+      derive_key(master_key, master_salt, @srtp_label_rtp_salt, 0, key_derivation_rate)
+
     %Srtp_Crypto_Ctx{
       ssrc: ssrc,
       aalg: aalg,
@@ -84,54 +94,174 @@ defmodule Xirsys.Srtp do
 
   def encrypt(%Rtp{} = rtp, passthru),
     do: {:ok, RTP.encode(rtp), passthru}
+
   def encrypt(%Rtcp{encrypted: data} = rctp, passthru),
     do: {:ok, data, passthru}
 
   def encrypt(
-    %Rtp{sequence_number: sequence_number, ssrc: ssrc, payload: payload} = rtp,
-    %Srtp_Crypto_Ctx{ssrc: ssrc, s_l: old_sequence_number, roc: roc, aalg: aalg, ealg: ealg, key_deriv_rate: key_derivation_rate, k_a: key_a, k_e: key_e, k_s: salt, tag_length: tag_length} = ctx
-  ) do
-    encrypted_payload = encrypt_payload(payload, ssrc, guess_index(sequence_number, old_sequence_number, roc), ealg, key_e, salt, key_derivation_rate, @srtp_label_rtp_encr)
-    {:ok, append_auth(Rtp.encode(%Rtp{rtp | payload: encrypted_payload}), <<roc::size(32)>>, aalg, key_a, tag_length), update_ctx(ctx, sequence_number, old_sequence_number, roc)}
+        %Rtp{sequence_number: sequence_number, ssrc: ssrc, payload: payload} = rtp,
+        %Srtp_Crypto_Ctx{
+          ssrc: ssrc,
+          s_l: old_sequence_number,
+          roc: roc,
+          aalg: aalg,
+          ealg: ealg,
+          key_deriv_rate: key_derivation_rate,
+          k_a: key_a,
+          k_e: key_e,
+          k_s: salt,
+          tag_length: tag_length
+        } = ctx
+      ) do
+    encrypted_payload =
+      encrypt_payload(
+        payload,
+        ssrc,
+        guess_index(sequence_number, old_sequence_number, roc),
+        ealg,
+        key_e,
+        salt,
+        key_derivation_rate,
+        @srtp_label_rtp_encr
+      )
+
+    {:ok,
+     append_auth(
+       Rtp.encode(%Rtp{rtp | payload: encrypted_payload}),
+       <<roc::size(32)>>,
+       aalg,
+       key_a,
+       tag_length
+     ), update_ctx(ctx, sequence_number, old_sequence_number, roc)}
   end
 
   def encrypt(
-    %Rtcp{} = rtcp,
-    %Srtp_Crypto_Ctx{ssrc: ssrc, rtcp_idx: idx, aalg: aalg, ealg: ealg, key_deriv_rate: key_derivation_rate, k_a: key_a, k_e: key_e, k_s: salt, tag_length: tag_length} = ctx
-  ) do
+        %Rtcp{} = rtcp,
+        %Srtp_Crypto_Ctx{
+          ssrc: ssrc,
+          rtcp_idx: idx,
+          aalg: aalg,
+          ealg: ealg,
+          key_deriv_rate: key_derivation_rate,
+          k_a: key_a,
+          k_e: key_e,
+          k_s: salt,
+          tag_length: tag_length
+        } = ctx
+      ) do
     <<header::binary-size(8), payload::binary>> = Rtcp.encode(rtcp)
-    encrypted_payload = encrypt_payload(payload, ssrc, 0, ealg, key_e, salt, key_derivation_rate, @srtp_label_rtcp_encr)
-    {:ok, append_auth(<<header::binary-size(8), encrypted_payload::binary, 1::size(1), idx::size(31)>>, <<>>, aalg, key_a, tag_length), ctx}
+
+    encrypted_payload =
+      encrypt_payload(
+        payload,
+        ssrc,
+        0,
+        ealg,
+        key_e,
+        salt,
+        key_derivation_rate,
+        @srtp_label_rtcp_encr
+      )
+
+    {:ok,
+     append_auth(
+       <<header::binary-size(8), encrypted_payload::binary, 1::size(1), idx::size(31)>>,
+       <<>>,
+       aalg,
+       key_a,
+       tag_length
+     ), ctx}
   end
 
-
-  def decrypt(<<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data, passthru) when payload_type <= 34 or 96 <= payload_type do
+  def decrypt(
+        <<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data,
+        passthru
+      )
+      when payload_type <= 34 or 96 <= payload_type do
     {:ok, rtp} = Rtp.decode(data)
     {:ok, rtp, passthru}
   end
 
-  def decrypt(<<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data, passthru) when 64 <= payload_type and payload_type <= 82,
-    do: {:ok, %Rtcp{encrypted: data}, passthru}
+  def decrypt(
+        <<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data,
+        passthru
+      )
+      when 64 <= payload_type and payload_type <= 82,
+      do: {:ok, %Rtcp{encrypted: data}, passthru}
 
   def decrypt(%Rtp{} = rtp, ctx),
     do: decrypt(Rtp.encode(rtp), ctx)
 
   def decrypt(
-    <<@rtp_version::size(2), _::size(7), payload_type::size(7), sequence_number::size(16), _::size(32), ssrc::size(32), rest::binary>> = data,
-    %Srtp_Crypto_Ctx{ssrc: ssrc, s_l: old_sequence_number, roc: roc, aalg: aalg, ealg: ealg, key_deriv_rate: key_derivation_rate, k_a: key_a, k_e: key_e, k_s: salt, tag_length: tag_length} = ctx
-  ) when payload_type <= 34 or 96 <= payload_type do
-    <<header::binary-size(12), encrypted_payload::binary>> = check_auth(data, <<roc::size(32)>>, aalg, key_a, tag_length)
-    decrypted_payload = decrypt_payload(encrypted_payload, ssrc, guess_index(sequence_number, old_sequence_number, roc), ealg, key_e, salt, key_derivation_rate, @srtp_label_rtp_encr)
+        <<@rtp_version::size(2), _::size(7), payload_type::size(7), sequence_number::size(16),
+          _::size(32), ssrc::size(32), rest::binary>> = data,
+        %Srtp_Crypto_Ctx{
+          ssrc: ssrc,
+          s_l: old_sequence_number,
+          roc: roc,
+          aalg: aalg,
+          ealg: ealg,
+          key_deriv_rate: key_derivation_rate,
+          k_a: key_a,
+          k_e: key_e,
+          k_s: salt,
+          tag_length: tag_length
+        } = ctx
+      )
+      when payload_type <= 34 or 96 <= payload_type do
+    <<header::binary-size(12), encrypted_payload::binary>> =
+      check_auth(data, <<roc::size(32)>>, aalg, key_a, tag_length)
+
+    decrypted_payload =
+      decrypt_payload(
+        encrypted_payload,
+        ssrc,
+        guess_index(sequence_number, old_sequence_number, roc),
+        ealg,
+        key_e,
+        salt,
+        key_derivation_rate,
+        @srtp_label_rtp_encr
+      )
+
     {:ok, rtp} = Rtp.decode(<<header::binary-size(12), decrypted_payload::binary>>)
     {:ok, rtp, update_ctx(ctx, sequence_number, old_sequence_number, roc)}
   end
 
   def decrypt(%Rtcp{encrypted: data}, ctx),
     do: decrypt(data, ctx)
-  def decrypt(<<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data, %Srtp_Crypto_Ctx{ssrc: ssrc, aalg: aalg, ealg: ealg, key_deriv_rate: key_derivation_rate, k_a: key_a, k_e: key_e, k_s: salt, tag_length: tag_length} = ctx) when 64 <= payload_type and payload_type <= 82 do
+
+  def decrypt(
+        <<@rtp_version::size(2), _::size(7), payload_type::size(7), rest::binary>> = data,
+        %Srtp_Crypto_Ctx{
+          ssrc: ssrc,
+          aalg: aalg,
+          ealg: ealg,
+          key_deriv_rate: key_derivation_rate,
+          k_a: key_a,
+          k_e: key_e,
+          k_s: salt,
+          tag_length: tag_length
+        } = ctx
+      )
+      when 64 <= payload_type and payload_type <= 82 do
     size = byte_size(data) - (tag_length + 8 + 4)
-    <<header::binary-size(8), encrypted_payload::binary-size(size), e::size(1), index::size(31)>> = check_auth(data, <<>>, aalg, key_a, tag_length)
-    decrypted_payload = decrypt_payload(encrypted_payload, ssrc, 0, ealg, key_e, salt, key_derivation_rate, @srtp_label_rtcp_encr)
+
+    <<header::binary-size(8), encrypted_payload::binary-size(size), e::size(1), index::size(31)>> =
+      check_auth(data, <<>>, aalg, key_a, tag_length)
+
+    decrypted_payload =
+      decrypt_payload(
+        encrypted_payload,
+        ssrc,
+        0,
+        ealg,
+        key_e,
+        salt,
+        key_derivation_rate,
+        @srtp_label_rtcp_encr
+      )
+
     {:ok, rtcp} = Rtp.decode(<<header::binary-size(8), decrypted_payload::binary>>)
     {:ok, rtcp, ctx}
   end
@@ -142,10 +272,14 @@ defmodule Xirsys.Srtp do
 
   def check_auth(data, _, SRTP_Authentication_Null, _, _),
     do: data
+
   def check_auth(data, roc, SRTP_Authentication_Sha1_Hmac, key, tag_length) do
     size = byte_size(data) - tag_length
     <<new_data::binary-size(size), tag::binary-size(tag_length)>> = data
-    <<tag::binary-size(tag_length), _::binary>> = :crypto.sha_mac(key, <<new_data::binary, roc::binary>>)
+
+    <<tag::binary-size(tag_length), _::binary>> =
+      :crypto.sha_mac(key, <<new_data::binary, roc::binary>>)
+
     new_data
   end
 
@@ -161,8 +295,11 @@ defmodule Xirsys.Srtp do
 
   def append_auth(data, _, SRTP_Authentication_Null, _, _),
     do: data
+
   def append_auth(data, roc, SRTP_Authentication_Sha1_Hmac, key, tag_length) do
-    <<tag::binary-size(tag_length), _::binary>> = :crypto.sha_mac(key, <<data::binary, roc::binary>>)
+    <<tag::binary-size(tag_length), _::binary>> =
+      :crypto.sha_mac(key, <<data::binary, roc::binary>>)
+
     <<data::binary, tag::binary>>
   end
 
@@ -176,47 +313,255 @@ defmodule Xirsys.Srtp do
 
   def encrypt_payload(data, _, _, SRTP_Encryption_Null, _, _, _, _),
     do: data
-  def encrypt_payload(data, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label),
-    do: encrypt_payload(data, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label, 0, <<>>)
-  def encrypt_payload(data, ssrc, index, SRTP_Encryption_AESF8, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :aesf8_encryption_unsupported})
-  def encrypt_payload(data, ssrc, index, SRTP_Encryption_TWOCM, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :twocm_encryption_unsupported})
-  def encrypt_payload(data, ssrc, index, SRTP_Encryption_TWOF8, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :twof8_encryption_unsupported})
+
+  def encrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do:
+        encrypt_payload(
+          data,
+          ssrc,
+          index,
+          SRTP_Encryption_AESCM,
+          session_key,
+          session_salt,
+          key_derivation_rate,
+          label,
+          0,
+          <<>>
+        )
+
+  def encrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_AESF8,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :aesf8_encryption_unsupported})
+
+  def encrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_TWOCM,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :twocm_encryption_unsupported})
+
+  def encrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_TWOF8,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :twof8_encryption_unsupported})
+
   def encrypt_payload(<<>>, _, _, _, _, _, _, _, _, encrypted),
     do: encrypted
-  def encrypt_payload(<<part::binary-size(16), rest::binary>>, ssrc, index, SRTP_Encryption_AESCM, session_key, <<s_s::size(112)>> = session_salt, key_derivation_rate, label, step, encrypted) do
-    key = get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
-    enc_part = :crypto.aes_ctr_encrypt(key, <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>, part)
-    encrypt_payload(rest, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label, step + 1, <<encrypted::binary, enc_part::binary>>)
+
+  def encrypt_payload(
+        <<part::binary-size(16), rest::binary>>,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        <<s_s::size(112)>> = session_salt,
+        key_derivation_rate,
+        label,
+        step,
+        encrypted
+      ) do
+    key =
+      get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
+
+    enc_part =
+      :crypto.aes_ctr_encrypt(
+        key,
+        <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>,
+        part
+      )
+
+    encrypt_payload(
+      rest,
+      ssrc,
+      index,
+      SRTP_Encryption_AESCM,
+      session_key,
+      session_salt,
+      key_derivation_rate,
+      label,
+      step + 1,
+      <<encrypted::binary, enc_part::binary>>
+    )
   end
-  def encrypt_payload(last_part, ssrc, index, SRTP_Encryption_AESCM, session_key, <<s_s::size(112)>> = session_salt, key_derivation_rate, label, step, encrypted) do
-    key = get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
-    enc_part = :crypto.aes_ctr_encrypt(key, <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>, last_part)
+
+  def encrypt_payload(
+        last_part,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        <<s_s::size(112)>> = session_salt,
+        key_derivation_rate,
+        label,
+        step,
+        encrypted
+      ) do
+    key =
+      get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
+
+    enc_part =
+      :crypto.aes_ctr_encrypt(
+        key,
+        <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>,
+        last_part
+      )
+
     <<encrypted::binary, enc_part::binary>>
   end
 
   def decrypt_payload(data, _, _, SRTP_Encryption_Null, _, _, _, _),
     do: data
-  def decrypt_payload(data, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label),
-    do: decrypt_payload(data, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label, 0, <<>>)
-  def decrypt_payload(data, ssrc, index, SRTP_Encryption_AESF8, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :aesf8_decryption_unsupported})
-  def decrypt_payload(data, ssrc, index, SRTP_Encryption_TWOCM, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :twocm_decryption_unsupported})
-  def decrypt_payload(data, ssrc, index, SRTP_Encryption_TWOF8, session_key, session_salt, key_derivation_rate, label),
-    do: throw({:error, :twof8_decryption_unsupported})
+
+  def decrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do:
+        decrypt_payload(
+          data,
+          ssrc,
+          index,
+          SRTP_Encryption_AESCM,
+          session_key,
+          session_salt,
+          key_derivation_rate,
+          label,
+          0,
+          <<>>
+        )
+
+  def decrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_AESF8,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :aesf8_decryption_unsupported})
+
+  def decrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_TWOCM,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :twocm_decryption_unsupported})
+
+  def decrypt_payload(
+        data,
+        ssrc,
+        index,
+        SRTP_Encryption_TWOF8,
+        session_key,
+        session_salt,
+        key_derivation_rate,
+        label
+      ),
+      do: throw({:error, :twof8_decryption_unsupported})
+
   def decrypt_payload(<<>>, _, _, _, _, _, _, _, _, decrypted),
     do: decrypted
-  def decrypt_payload(<<part::binary-size(16), rest::binary>>, ssrc, index, SRTP_Encryption_AESCM, session_key, <<s_s::size(112)>> = session_salt, key_derivation_rate, label, step, decrypted) do
-    key = get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
-    dec_part = :crypto.aes_ctr_decrypt(key, <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>, part)
-    decrypt_payload(rest, ssrc, index, SRTP_Encryption_AESCM, session_key, session_salt, key_derivation_rate, label, step + 1, <<decrypted::binary, dec_part::binary>>)
+
+  def decrypt_payload(
+        <<part::binary-size(16), rest::binary>>,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        <<s_s::size(112)>> = session_salt,
+        key_derivation_rate,
+        label,
+        step,
+        decrypted
+      ) do
+    key =
+      get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
+
+    dec_part =
+      :crypto.aes_ctr_decrypt(
+        key,
+        <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>,
+        part
+      )
+
+    decrypt_payload(
+      rest,
+      ssrc,
+      index,
+      SRTP_Encryption_AESCM,
+      session_key,
+      session_salt,
+      key_derivation_rate,
+      label,
+      step + 1,
+      <<decrypted::binary, dec_part::binary>>
+    )
   end
-  def decrypt_payload(last_part, ssrc, index, SRTP_Encryption_AESCM, session_key, <<s_s::size(112)>> = session_salt, key_derivation_rate, label, step, decrypted) do
-    key = get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
-    dec_part = :crypto.aes_ctr_decrypt(key, <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>, last_part)
+
+  def decrypt_payload(
+        last_part,
+        ssrc,
+        index,
+        SRTP_Encryption_AESCM,
+        session_key,
+        <<s_s::size(112)>> = session_salt,
+        key_derivation_rate,
+        label,
+        step,
+        decrypted
+      ) do
+    key =
+      get_ctr_cipher_stream(session_key, session_salt, label, index, key_derivation_rate, step)
+
+    dec_part =
+      :crypto.aes_ctr_decrypt(
+        key,
+        <<bxor(bxor(s_s, bsl(ssrc, 48)), index)::size(112), step::size(16)>>,
+        last_part
+      )
+
     <<decrypted::binary, dec_part::binary>>
   end
 
@@ -226,6 +571,7 @@ defmodule Xirsys.Srtp do
 
   def computeIV(<<salt::size(112)>>, label, index, 0),
     do: <<bxor(salt, bsl(label, 48))::size(112)>>
+
   def computeIV(<<salt::size(112)>>, label, index, key_derivation_rate),
     do: <<bxor(salt, bor(bsl(label, 48), div(index, key_derivation_rate)))::size(112)>>
 
@@ -241,50 +587,71 @@ defmodule Xirsys.Srtp do
 
   def guess_index(sequence_number, nil, roc),
     do: guess_index(sequence_number, sequence_number, roc)
+
   def guess_index(sequence_number, old_sequence_number, roc) when old_sequence_number < 32768 do
-    guessed_roc = cond do
-      (sequence_number - old_sequence_number) > 32768 ->
-        roc - 1
-      true ->
-        roc
-    end
-    bsl(guessed_roc, 16) + sequence_number
-  end
-  def guess_index(sequence_number, old_sequence_number, roc) do
-    guessed_roc = cond do
-      (old_sequence_number - 32768) > sequence_number ->
-        roc + 1
-      true ->
-        roc
-    end
+    guessed_roc =
+      cond do
+        sequence_number - old_sequence_number > 32768 ->
+          roc - 1
+
+        true ->
+          roc
+      end
+
     bsl(guessed_roc, 16) + sequence_number
   end
 
-  def update_ctx(ctx, sequence_number, old_sequence_number, roc) when old_sequence_number < 32768 do
+  def guess_index(sequence_number, old_sequence_number, roc) do
+    guessed_roc =
+      cond do
+        old_sequence_number - 32768 > sequence_number ->
+          roc + 1
+
+        true ->
+          roc
+      end
+
+    bsl(guessed_roc, 16) + sequence_number
+  end
+
+  def update_ctx(ctx, sequence_number, old_sequence_number, roc)
+      when old_sequence_number < 32768 do
     new_sequence_number = :erlang.max(sequence_number, old_sequence_number)
-    guessed_roc = cond do
-      (sequence_number - old_sequence_number) > 32768 ->
-        roc - 1
-      true ->
-        roc
-    end
+
+    guessed_roc =
+      cond do
+        sequence_number - old_sequence_number > 32768 ->
+          roc - 1
+
+        true ->
+          roc
+      end
+
     cond do
       guessed_roc > roc ->
         %Srtp_Crypto_Ctx{ctx | s_l: sequence_number, roc: guessed_roc}
-      true -> %Srtp_Crypto_Ctx{ctx | s_l: new_sequence_number, roc: roc}
+
+      true ->
+        %Srtp_Crypto_Ctx{ctx | s_l: new_sequence_number, roc: roc}
     end
   end
+
   def update_ctx(ctx, sequence_number, old_sequence_number, roc) do
     new_sequence_number = :erlang.max(sequence_number, old_sequence_number)
-    guessed_roc = cond do
-      (old_sequence_number - 32768) > sequence_number ->
-        roc + 1
-      true ->
-        roc
-    end
+
+    guessed_roc =
+      cond do
+        old_sequence_number - 32768 > sequence_number ->
+          roc + 1
+
+        true ->
+          roc
+      end
+
     cond do
       guessed_roc > roc ->
         %Srtp_Crypto_Ctx{ctx | s_l: sequence_number, roc: guessed_roc}
+
       true ->
         %Srtp_Crypto_Ctx{ctx | s_l: new_sequence_number, roc: roc}
     end

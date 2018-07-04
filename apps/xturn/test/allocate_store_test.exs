@@ -1,27 +1,35 @@
 defmodule AllocateStoreTest do
-
-  use ExUnit.Case # bring in the test functionality
+  # bring in the test functionality
+  use ExUnit.Case
   # import ExUnit.CaptureIO # And allow us to capture stuff sent to stdout
 
   alias Xirsys.Turn.Allocate.Store, as: S
   alias Xirsys.Turn.Tuple5
 
-  @valid_address {{127,0,0,2}, 8888}
-  @invalid_address {{127,0,0,3}, 8889}
+  @valid_address {{127, 0, 0, 2}, 8888}
+  @invalid_address {{127, 0, 0, 3}, 8889}
   @ca {127, 0, 0, 1}
   @cp 80
   @sa {198, 162, 0, 1}
   @sp 54345
 
   def new_tuple5 do
-    %Xirsys.Turn.Tuple5{client_address: @ca, client_port: @cp, server_address: @sa, server_port: @sp, protocol: :udp}
+    %Xirsys.Turn.Tuple5{
+      client_address: @ca,
+      client_port: @cp,
+      server_address: @sa,
+      server_port: @sp,
+      protocol: :udp
+    }
   end
 
   setup do
     tid = "12345"
-    on_exit fn ->
+
+    on_exit(fn ->
       S.delete(tid)
-    end
+    end)
+
     pid = self()
     relay = @valid_address
     t5 = new_tuple5()

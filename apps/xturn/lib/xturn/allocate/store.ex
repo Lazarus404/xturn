@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Turn.Allocate.Store do
   @moduledoc """
@@ -41,7 +41,7 @@ defmodule Xirsys.Turn.Allocate.Store do
   alias Xirsys.Turn.Tuple5, as: T5
 
   def init(),
-    do: Exts.new(__MODULE__, [access: :public])
+    do: Exts.new(__MODULE__, access: :public)
 
   def insert(tid, pid, {{_, _, _, _}, _port} = relay, %T5{} = tuple5, socket, perms),
     do: Exts.write(__MODULE__, {tid, {pid, relay, T5.to_map(tuple5), socket, perms}})
@@ -49,22 +49,22 @@ defmodule Xirsys.Turn.Allocate.Store do
   def lookup(tid) when is_binary(tid) do
     case Exts.read(__MODULE__, tid) do
       [{_tid, {pid, _, _, socket, perms}}] -> {:ok, pid, socket, perms}
-      []                   -> {:error, :not_found}
+      [] -> {:error, :not_found}
     end
   end
 
   def lookup([{:ca, _}, {:cp, _}, {:sa, _}, {:sp, _}, {:proto, _}] = tuple5),
-    do: match({:"_", {:"$1", :"$2", tuple5, :"$3", :"$4"}})
-  def lookup({{i1, i2, i3, i4}, _port} = relay_address) when is_integer(i1) and i1 < 256 and
-                                                             is_integer(i2) and i2 < 256 and
-                                                             is_integer(i3) and i3 < 256 and
-                                                             is_integer(i4) and i4 < 256,
-    do: match({:"_", {:"$1", relay_address, :"$2", :"$3", :"$4"}})
+    do: match({:_, {:"$1", :"$2", tuple5, :"$3", :"$4"}})
+
+  def lookup({{i1, i2, i3, i4}, _port} = relay_address)
+      when is_integer(i1) and i1 < 256 and is_integer(i2) and i2 < 256 and is_integer(i3) and
+             i3 < 256 and is_integer(i4) and i4 < 256,
+      do: match({:_, {:"$1", relay_address, :"$2", :"$3", :"$4"}})
 
   def exists(criteria) do
     case lookup(criteria) do
       {:ok, _} -> true
-      _        -> false
+      _ -> false
     end
   end
 
@@ -78,6 +78,7 @@ defmodule Xirsys.Turn.Allocate.Store do
 
   defp maybe_values(%{values: [client]}) when is_list(client),
     do: {:ok, client}
+
   defp maybe_values(_),
     do: {:error, :not_found}
 end

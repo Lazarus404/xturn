@@ -1,6 +1,6 @@
 defmodule ClientTest do
-
-  use ExUnit.Case # bring in the test functionality
+  # bring in the test functionality
+  use ExUnit.Case
   # import ExUnit.CaptureIO # And allow us to capture stuff sent to stdout
 
   # alias Xirsys.Turn.Allocate.Client, as: C

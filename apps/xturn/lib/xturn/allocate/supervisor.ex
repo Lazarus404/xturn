@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Turn.Allocate.Supervisor do
   use Supervisor
@@ -46,7 +46,7 @@ defmodule Xirsys.Turn.Allocate.Supervisor do
   end
 
   def init(alloc) do
-    tree = [ worker(alloc, [], restart: :temporary) ]
+    tree = [worker(alloc, [], restart: :temporary)]
     supervise(tree, strategy: :simple_one_for_one)
   end
 end

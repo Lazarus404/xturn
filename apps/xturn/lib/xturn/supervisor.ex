@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Turn.Supervisor do
   use Supervisor
@@ -41,29 +41,35 @@ defmodule Xirsys.Turn.Supervisor do
 
   def init([list, cb]) do
     listen = list
-    children = listen
-    |> Enum.map(fn (data) ->
-      start_listener(data, cb)
-    end)
-    supervise [
-      worker(Server, []),
-      worker(Allocate.Supervisor, [Allocate.Client]),
-      worker(Auth.Supervisor, []),
-      worker(TCP_Supervisor, [])
-    ] ++ children, strategy: :one_for_one
+
+    children =
+      listen
+      |> Enum.map(fn data ->
+        start_listener(data, cb)
+      end)
+
+    supervise(
+      [
+        worker(Server, []),
+        worker(Allocate.Supervisor, [Allocate.Client]),
+        worker(Auth.Supervisor, []),
+        worker(TCP_Supervisor, [])
+      ] ++ children,
+      strategy: :one_for_one
+    )
   end
 
   defp start_listener({type, ipStr, port}, cb) do
     {:ok, ip} = :inet_parse.address(ipStr)
-    worker(listener(type), [cb, ip, port, false], [id: id(type, port)])
+    worker(listener(type), [cb, ip, port, false], id: id(type, port))
   end
+
   defp start_listener({type, ipStr, port, secure}, cb) do
     {:ok, ip} = :inet_parse.address(ipStr)
-    worker(listener(type), [cb, ip, port, secure == :secure], [id: id(type, port, secure)])
+    worker(listener(type), [cb, ip, port, secure == :secure], id: id(type, port, secure))
   end
 
   defp listener(:tcp), do: TCP_Listener
   defp listener(:udp), do: UDP_Listener
   defp id(type, port, secure \\ ""), do: "#{type}_listener_#{secure}_#{port}"
-
 end

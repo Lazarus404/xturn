@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Turn.Conn do
   @moduledoc """
@@ -62,10 +62,12 @@ defmodule Xirsys.Turn.Conn do
     do: %Conn{conn | halt: true}
 
   def response(conn, class, attrs \\ nil)
+
   def response(%Conn{} = conn, class, attrs) when is_atom(class),
     do: %Conn{conn | response: %Response{class: class, attrs: attrs}}
+
   def response(%Conn{} = conn, err, msg) when is_integer(err),
-    do: %Conn{conn | response: %Response{err_no: err, message: msg}} |> Conn.halt
+    do: %Conn{conn | response: %Response{err_no: err, message: msg}} |> Conn.halt()
 
   @doc """
   If a response message has been set, then we must notify the client according
@@ -77,39 +79,53 @@ defmodule Xirsys.Turn.Conn do
     |> build_response(err, msg)
     |> respond()
   end
+
   def send(%Conn{response: %Response{class: cls, attrs: attrs}} = conn) when is_atom(cls) do
     conn
     |> build_response(cls, attrs)
     |> respond()
   end
+
   def send(%Conn{} = conn) do
-    Logger.info "SEND: #{inspect conn}"
+    Logger.info("SEND: #{inspect(conn)}")
     conn
   end
+
   def send(v) do
-    Logger.info "SEND: #{inspect v}"
+    Logger.info("SEND: #{inspect(v)}")
     v
   end
 
-  @spec build_response(Conn, atom() | Integer, String.t | list()) :: Conn
-  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, class, attrs) when is_atom(class) do
-    new_attrs = cond do
-      is_map(attrs) ->
-        Map.put(attrs, :software, @software)
-      true ->
-        %{software: @software}
-    end
+  @spec build_response(Conn, atom() | Integer, String.t() | list()) :: Conn
+  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, class, attrs)
+       when is_atom(class) do
+    new_attrs =
+      cond do
+        is_map(attrs) ->
+          Map.put(attrs, :software, @software)
+
+        true ->
+          %{software: @software}
+      end
+
     fingerprint = turn.integrity
-    Logger.info "#{inspect new_attrs}"
-    %Conn{conn | decoded_message: %Stun{turn | class: class, fingerprint: fingerprint, attrs: new_attrs}}
+    Logger.info("#{inspect(new_attrs)}")
+
+    %Conn{
+      conn
+      | decoded_message: %Stun{turn | class: class, fingerprint: fingerprint, attrs: new_attrs}
+    }
   end
-  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, err_no, err_msg) when is_integer(err_no) do
+
+  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, err_no, err_msg)
+       when is_integer(err_no) do
     new_attrs = %{
       error_code: {err_no, err_msg},
       nonce: @nonce,
       realm: @realm,
       software: @software
     }
+
     %Conn{conn | decoded_message: %Stun{turn | class: :error, attrs: new_attrs}}
   end
 
@@ -118,6 +134,7 @@ defmodule Xirsys.Turn.Conn do
     case conn.client_socket do
       nil ->
         conn
+
       client_socket ->
         Socket.send(client_socket, Stun.encode(turn, turn.key), conn.client_ip, conn.client_port)
         conn

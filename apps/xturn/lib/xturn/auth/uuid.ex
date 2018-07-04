@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Turn.Auth.UUID do
   @moduledoc """
@@ -38,18 +38,21 @@ defmodule Xirsys.Turn.Auth.UUID do
 
   def to_hex([]),
     do: []
+
   def to_hex(bin) when is_binary(bin),
     do: to_hex(:erlang.binary_to_list(bin))
-  def to_hex([h|t]),
+
+  def to_hex([h | t]),
     do: [to_digit(div(h, 16)), to_digit(rem(h, 16)) | to_hex(t)]
 
   def to_digit(n) when n < 10 do
     [t] = '0'
     t + n
   end
+
   def to_digit(n) do
     [t] = 'a'
-    t + n-10
+    t + n - 10
   end
 
   def random(),
@@ -60,7 +63,7 @@ defmodule Xirsys.Turn.Auth.UUID do
     nowish = :calendar.now_to_universal_time(now)
     nowsecs = :calendar.datetime_to_gregorian_seconds(nowish)
     then = :calendar.datetime_to_gregorian_seconds({{1970, 1, 1}, {0, 0, 0}})
-    prefix = :io_lib.format("~14.16.0b", [(nowsecs - then) * 1000000 + micro])
+    prefix = :io_lib.format("~14.16.0b", [(nowsecs - then) * 1_000_000 + micro])
     :erlang.list_to_binary(prefix ++ to_hex(:crypto.strong_rand_bytes(9)))
   end
 
@@ -68,5 +71,5 @@ defmodule Xirsys.Turn.Auth.UUID do
     do: to_hex(:crypto.strong_rand_bytes(13))
 
   def inc(),
-    do: :rand.uniform(0xffe)
+    do: :rand.uniform(0xFFE)
 end

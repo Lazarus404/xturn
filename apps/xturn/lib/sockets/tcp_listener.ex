@@ -1,4 +1,4 @@
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 ###
 ### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC<lee.sylvester@gmail.com>
 ###
@@ -27,7 +27,7 @@
 ### (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
 ### SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 ###
-###----------------------------------------------------------------------
+### ----------------------------------------------------------------------
 
 defmodule Xirsys.Sockets.TCP_Listener do
   @moduledoc """
@@ -39,14 +39,16 @@ defmodule Xirsys.Sockets.TCP_Listener do
   alias Xirsys.Sockets.Socket
   @vsn "0"
 
-  @buf_size 1024*1024*16
-  @opts [reuseaddr: true,
-         keepalive: true,
-         backlog: 30,
-         active: false,
-         buffer: @buf_size,
-         recbuf: @buf_size,
-         sndbuf: @buf_size]
+  @buf_size 1024 * 1024 * 16
+  @opts [
+    reuseaddr: true,
+    keepalive: true,
+    backlog: 30,
+    active: false,
+    buffer: @buf_size,
+    recbuf: @buf_size,
+    sndbuf: @buf_size
+  ]
 
   #####
   # External API
@@ -93,18 +95,21 @@ defmodule Xirsys.Sockets.TCP_Listener do
 
   defp open_socket(cb, ip, port, ssl, opts) do
     with true <- valid_ip?(ip) do
-      {:ok, socket} = case ssl do
-        true ->
-          {:ok, certs} = :application.get_env(:certs)
-          nopts = opts ++ certs
-          {:ok, sock} = :ssl.listen(port, nopts)
-          {:ok, %Socket{type: :tls, sock: sock}}
-        _ ->
-          {:ok, sock} = :gen_tcp.listen(port, opts)
-          {:ok, %Socket{type: :tcp, sock: sock}}
-      end
+      {:ok, socket} =
+        case ssl do
+          true ->
+            {:ok, certs} = :application.get_env(:certs)
+            nopts = opts ++ certs
+            {:ok, sock} = :ssl.listen(port, nopts)
+            {:ok, %Socket{type: :tls, sock: sock}}
+
+          _ ->
+            {:ok, sock} = :gen_tcp.listen(port, opts)
+            {:ok, %Socket{type: :tcp, sock: sock}}
+        end
+
       Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
-      Logger.info "TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]"
+      Logger.info("TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]")
       {:ok, %{listener: socket, ssl: ssl}}
     else
       _ -> {:error, :invalid_ip_address}

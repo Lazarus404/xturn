@@ -1,6 +1,6 @@
 defmodule CacheTest do
-
-  use ExUnit.Case, async: true # bring in the test functionality
+  # bring in the test functionality
+  use ExUnit.Case, async: true
   import Xirsys.Turn.Cache.Store
 
   setup do
@@ -16,6 +16,7 @@ defmodule CacheTest do
 
   test "item times out after lifetime", %{state: state} do
     assert get_item_count(state) == 1
+
     receive do
       R -> R
     after
@@ -29,5 +30,4 @@ defmodule CacheTest do
     remove_item_from_store(state, :item1)
     assert get_item_count(state) == 0
   end
-
 end
