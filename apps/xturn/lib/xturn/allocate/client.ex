@@ -341,6 +341,7 @@ defmodule Xirsys.Turn.Allocate.Client do
     |> Channels.delete()
 
     Xirsys.Turn.Cache.Store.terminate(state.channels)
+    Xirsys.Turn.Cache.Store.terminate(state.permissions)
     Store.delete(state.id)
     :ok
   end
