@@ -40,25 +40,58 @@ defmodule Xirsys.Turn.Allocate.Client do
   @channel_lifetime 600_000
   @permission_lifetime 300_000
 
-  alias Xirsys.Turn.Allocate.{State, Store, Client}
+  alias Xirsys.Turn.Allocate.{Store, Client}
   alias Xirsys.Turn.Channels.Store, as: Channels
   alias Xirsys.Turn.Channels.Channel, as: Channel
   alias Xirsys.Turn.Tuple5
   alias Xirsys.Stun
   alias Xirsys.Utils.Timing, as: Time
-  alias Xirsys.Utils.Socket, as: Utils
+  alias Xirsys.Sockets.Socket
+
+  defmodule State do
+    @moduledoc """
+    TURN allocation state object
+    """
+    @vsn "0"
+    defstruct id: nil,
+              client_socket: nil,
+              tuple5: nil,
+              relayed_address: nil,
+              relayed_socket: nil,
+              requested_transport: :udp,
+              dont_fragment: false,
+              reserve_port: false,
+              next_port: false,
+
+              username: nil,
+              passhash: nil,
+              nonce: nil,
+
+              refresh_time: nil,
+              lifetime: 600,
+
+              permissions: nil,
+              channels: nil,
+
+              bytes_in: 0,
+              bytes_out: 0,
+              peer_started: nil,
+              peer_ended: nil,
+              peer_id: nil,
+              ns: nil
+  end
 
   #########################################################################################################################
   # Interface functions
   #########################################################################################################################
 
-  def start_link(id, listener, tuple5, lifetime),
-    do: GenServer.start_link(__MODULE__, [id, listener, tuple5, lifetime])
+  def start_link(id, client_socket, tuple5, lifetime),
+    do: GenServer.start_link(__MODULE__, [id, client_socket, tuple5, lifetime])
 
-  def create(id, listener, tuple5, lifetime),
-    do: Xirsys.Turn.Allocate.Supervisor.start_child(id, listener, tuple5, lifetime)
-  def create(id, listener, tuple5),
-    do: create(id, listener, tuple5, @default_lifetime)
+  def create(id, client_socket, tuple5, lifetime),
+    do: Xirsys.Turn.Allocate.Supervisor.start_child(id, client_socket, tuple5, lifetime)
+  def create(id, client_socket, tuple5),
+    do: create(id, client_socket, tuple5, @default_lifetime)
 
   def destroy(pid),
     do: Xirsys.Turn.Allocate.Supervisor.terminate_child(pid)
@@ -139,12 +172,12 @@ defmodule Xirsys.Turn.Allocate.Client do
   # OTP functions
   #########################################################################################################################
 
-  def init([id, listener, tuple5, lifetime]) do
+  def init([id, client_socket, tuple5, lifetime]) do
     {:ok, perms} = Xirsys.Turn.Cache.Store.init(@permission_lifetime)
     {:ok, chans} = Xirsys.Turn.Cache.Store.init(@channel_lifetime, fn id -> Logger.info "CHANNEL #{inspect id} REMOVED" end )
     {:ok, %State{
                   id: id,
-                  listener: listener,
+                  client_socket: client_socket,
                   tuple5: tuple5,
                   refresh_time: Time.now(),
                   lifetime: lifetime,
@@ -179,7 +212,7 @@ defmodule Xirsys.Turn.Allocate.Client do
           conn = %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: data_attrs}
           Stun.encode(conn)
       end
-      GenServer.cast(state.listener, {data, state.tuple5.client_address, state.tuple5.client_port})
+      Socket.send(state.client_socket, data, state.tuple5.client_address, state.tuple5.client_port)
       byte_size(data)
     else
       _ ->
@@ -259,7 +292,7 @@ defmodule Xirsys.Turn.Allocate.Client do
   def terminate(reason, state) do
     Logger.info "Terminating with state : #{inspect reason}"
     if (state.relayed_socket),
-      do: :gen_udp.close(state.relayed_socket)
+      do: Socket.close(state.relayed_socket)
     Xirsys.Turn.Cache.Store.keys(state.channels)
     |> Channels.delete()
     Xirsys.Turn.Cache.Store.terminate(state.channels)
@@ -272,9 +305,9 @@ defmodule Xirsys.Turn.Allocate.Client do
   #########################################################################################################################
 
   defp open_port_call({policy, opts}, _from, state) do
-    case Utils.open_turn_port(Utils.server_local_ip(), policy, opts) do
+    case Socket.open_turn_port(Socket.server_local_ip(), policy, opts) do
       {:ok, socket} ->
-        {:ok, port} = :inet.port(socket)
+        {:ok, port} = Socket.port(socket)
         {:reply, {:ok, socket, port}, %State{state | relayed_socket: socket}, Time.milliseconds_left(state)}
       {:error, reason} ->
         {:reply, {:error, reason}, state, Time.milliseconds_left(state)}
@@ -293,13 +326,13 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "Returning data on #{inspect t5.client_address}:#{inspect t5.client_port}"
     send_data(msg, t5.client_address, t5.client_port, state)
   end
-  def send_data(msg, cip, cport, state) when is_map(state) do
-    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
-    :gen_udp.send(state.relayed_socket, cip, cport, msg)
-  end
-  def send_data(msg, cip, cport, socket) do
+  def send_data(msg, cip, cport, %Socket{} = socket) do
     Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on socket #{inspect socket}"
-    :gen_udp.send(socket, cip, cport, msg)
+    Socket.send(socket, msg, cip, cport)
+  end
+  def send_data(msg, cip, cport, state) do
+    Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
+    Socket.send(state.relayed_socket, msg, cip, cport)
   end
 
   def send_data_channel(channel_number, data, socket, channel_cache) do

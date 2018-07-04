@@ -44,7 +44,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
          sndbuf: @buf_size]
 
   alias Xirsys.Turn.Conn
-  alias Xirsys.Utils.Socket, as: Utils
+  alias Xirsys.Sockets.Socket
 
   #####
   # External API
@@ -85,7 +85,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Asynchronous socket response handler
   """
   def handle_cast({msg, ip, port}, state) do
-    :gen_udp.send(state.socket, ip, port, msg)
+    Socket.send(state.socket, msg, ip, port)
     {:noreply, state}
   end
 
@@ -99,7 +99,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   end
 
   def handle_info(:timeout, state) do
-    :inet.setopts(state.socket, [{:active, :once}, :binary])
+    Socket.setopts(state.socket)
     :erlang.process_flag(:priority, :high)
     {:noreply, state}
   end
@@ -109,16 +109,17 @@ defmodule Xirsys.Sockets.UDP_Listener do
   """
   def handle_info({:udp, _fd, fip, fport, msg}, state) do
     Logger.debug "UDP called #{inspect byte_size(msg)} bytes"
-    {:ok, {_, tport}} = :inet.sockname(state.socket)
+    {:ok, {_, tport}} = Socket.sockname(state.socket)
     spawn(state.callback, :process_message, [%Conn{
         message: msg,
         listener: self(),
+        client_socket: state.socket,
         client_ip: fip,
         client_port: fport,
-        server_ip: Utils.server_ip(),
+        server_ip: Socket.server_ip(),
         server_port: tport
       }])
-    :inet.setopts(state.socket, [{:active, :once}, :binary])
+    Socket.setopts(state.socket)
     :erlang.process_flag(:priority, :high)
     {:noreply, state}
   end
@@ -132,31 +133,9 @@ defmodule Xirsys.Sockets.UDP_Listener do
     {:ok, state}
   end
 
-  def terminate(reason, %{ssl: true} = state) do
-    :ssl.close(state.socket)
-    Logger.debug "DTLS listener closed: #{inspect reason}"
-    :ok
-  end
   def terminate(reason, state) do
-    :gen_udp.close(state.socket)
-    Logger.debug "UDP listener closed: #{inspect reason}"
+    Socket.close(state.socket, reason)
     :ok
-  end
-
-  @doc """
-  Apply specific socket option for STUN connection
-  """
-  def set_sockopt(list_sock, cli_socket) do
-    # true = :inet_db.register_socket(cli_socket, :inet_udp)
-    try do
-      {:ok, opts} = :ssl.getopts(list_sock, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
-      :ssl.setopts(cli_socket, opts)
-      :ok
-    rescue
-      e ->
-        Logger.error "damn #{inspect e}"
-        close(cli_socket)
-    end
   end
 
   defp open_socket(cb, ip, port, ssl, opts) do
@@ -167,26 +146,17 @@ defmodule Xirsys.Sockets.UDP_Listener do
           {:ok, certs} = :application.get_env(:certs)
           nopts = opts ++ certs ++ [protocol: :dtls]
           {:ok, fd} = :ssl.listen(port, nopts)
+          fd = %Socket{type: :dtls, sock: fd}
           Xirsys.Sockets.TCP_Client.create(fd, cb, ssl)
           {:ok, %{listener: fd, ssl: ssl}}
         _ ->
           {:ok, fd} = :gen_udp.open(port, opts)
-          {:ok, %{socket: fd, callback: cb, ssl: ssl}, 0}
+          {:ok, %{socket: %Socket{type: :udp, sock: fd}, callback: cb, ssl: ssl}, 0}
       end
     else
       false -> {:error, :invalid_ip_address}
       e -> e
     end
-  end
-
-  def close(nil) do
-    Logger.debug "Caught attempted close of nil socket"
-  end
-  def close({:sslsocket, _, _} = socket) do
-    :ssl.close(socket)
-  end
-  def close(socket) when socket != nil do
-    :gen_udp.close(socket)
   end
 
   defp valid_ip?(ip),

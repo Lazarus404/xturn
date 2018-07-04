@@ -29,35 +29,15 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Turn.Allocate.State do
+defmodule Xirsys.Turn.Response do
   @moduledoc """
-  TURN allocation state object
+  TURN connection object
   """
+
   @vsn "0"
-  defstruct id: nil,
-            listener: nil,
-            tuple5: nil,
-            relayed_address: nil,
-            relayed_socket: nil,
-            requested_transport: :udp,
-            dont_fragment: false,
-            reserve_port: false,
-            next_port: false,
 
-            username: nil,
-            passhash: nil,
-            nonce: nil,
-
-            refresh_time: nil,
-            lifetime: 600,
-
-            permissions: nil,
-            channels: nil,
-
-            bytes_in: 0,
-            bytes_out: 0,
-            peer_started: nil,
-            peer_ended: nil,
-            peer_id: nil,
-            ns: nil
+  defstruct class: nil,
+            attrs: nil,
+            err_no: nil,
+            message: nil
 end

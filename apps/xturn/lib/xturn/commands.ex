@@ -29,7 +29,7 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Turn.Parse do
+defmodule Xirsys.Turn.Commands do
   @moduledoc """
   provides handers for TURN over STUN
   """
@@ -54,7 +54,7 @@ defmodule Xirsys.Turn.Parse do
   alias Xirsys.Turn.Allocate.Client, as: AllocateClient
   alias Xirsys.Turn.Auth.Client, as: AuthClient
   alias Xirsys.Stun
-  alias Xirsys.Utils.Socket, as: Utils
+  alias Xirsys.Sockets.Socket
 
   @doc """
   Encapsulates full STUN/TURN request stub. Must be called as
@@ -64,7 +64,7 @@ defmodule Xirsys.Turn.Parse do
   def process_message(%Conn{message: <<@stun_marker::2, _::14, _rest::binary>> = msg} = conn) do
     Logger.debug "TURN Data received"
     {:ok, turn} = Stun.decode(msg)
-    do_request(%Conn{conn | decoded_message: turn}) |> Response.send()
+    do_request(%Conn{conn | decoded_message: turn}) |> Conn.send()
   end
 
   @doc """
@@ -101,7 +101,7 @@ defmodule Xirsys.Turn.Parse do
     attrs = %{
               xor_mapped_address: {conn.client_ip, conn.client_port},
               mapped_address: {conn.client_ip, conn.client_port},
-              response_origin: {Utils.server_ip(), conn.server_port}
+              response_origin: {Socket.server_ip(), conn.server_port}
             }
     Conn.response(conn, :success, attrs)
   end
@@ -162,7 +162,7 @@ defmodule Xirsys.Turn.Parse do
   # then this is a duplicate allocation request and can be safely
   # ignored.
   defp action(:not_allocation_exists, %Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, Utils.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
+    tup5 = [{:ca, conn.client_ip}, {:cp, conn.client_port}, {:sa, Socket.server_ip}, {:sp, conn.server_port}, {:proto, Map.get(attrs, :requested_transport)}]
     with false <- Store.exists(tup5) do
       conn
     else
@@ -174,7 +174,7 @@ defmodule Xirsys.Turn.Parse do
         nattrs = [
           #reservation_token: <<0::64>>,
           xor_mapped_address: {conn.client_ip, conn.client_port},
-          xor_relayed_address: {Utils.server_ip(), port},
+          xor_relayed_address: {Socket.server_ip(), port},
           lifetime: <<600::32>>
         ]
         Logger.debug "integrity = #{conn.decoded_message.integrity}"
@@ -211,17 +211,17 @@ defmodule Xirsys.Turn.Parse do
             else: []
     tuple5 = Tuple5.create(conn, proto)
     lifetime = 600
-    {:ok, pid} = AllocateClient.create(conn.decoded_message.transactionid, conn.listener, tuple5, lifetime)
+    {:ok, pid} = AllocateClient.create(conn.decoded_message.transactionid, conn.client_socket, tuple5, lifetime)
     AllocateClient.set_peer_details(pid, conn.decoded_message.ns, conn.decoded_message.peer_id)
     {:ok, socket, port} = AllocateClient.open_port_random(pid, opts)
     {:ok, permission_cache} = AllocateClient.get_permission_cache(pid)
-    relay_address = {Utils.server_ip, port}
+    relay_address = {Socket.server_ip, port}
     AllocateClient.set_relay_address(pid, relay_address)
     Store.insert(conn.decoded_message.transactionid, pid, relay_address, tuple5, socket, permission_cache)
     nattrs = %{
       # reservation_token: <<0::64>>,
       xor_mapped_address: {conn.client_ip, conn.client_port},
-      xor_relayed_address: {Utils.server_ip(), port},
+      xor_relayed_address: {Socket.server_ip(), port},
       lifetime: <<600::32>>
     }
     Logger.debug "integrity = #{conn.decoded_message.integrity}"
@@ -291,10 +291,11 @@ defmodule Xirsys.Turn.Parse do
     tuple5 = Tuple5.to_map(Tuple5.create(conn, :"_"))
     with true <- Map.has_key?(attrs, :data) and Map.has_key?(attrs, :xor_peer_address),
          data <- Map.get(attrs, :data),
-         peer_address = {pip, _} <- Map.get(attrs, :xor_peer_address),
+         peer_address = {pip, port} <- Map.get(attrs, :xor_peer_address),
          {:ok, [client, {relay_ip, _relay_port}, socket, permission_cache]} <- Store.lookup(tuple5) do
       Logger.debug "sending indication to peer"
-      AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
+      # AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
+      Socket.send(socket, data, pip, port)
       conn
     else
       {:error, _} ->
@@ -344,7 +345,7 @@ defmodule Xirsys.Turn.Parse do
     tuple5 = Tuple5.to_map(Tuple5.create(conn, proto))
     case Channels.lookup({channel, tuple5}) do
       {:ok, [[client, _peer_address, socket, channel_cache]|_tail]} ->
-        AllocateClient.send_channel(client, channel, data, socket, channel_cache)
+        AllocateClient.send_channel(client, channel, data, socket, channel_cache) # already short circuited
         conn
       {:error, :not_found} ->
         Logger.debug "channel #{inspect channel} does not exist in ETS"

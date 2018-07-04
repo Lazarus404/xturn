@@ -1,5 +1,4 @@
 defmodule Xirsys.Utils.Timing do
-  alias Xirsys.Turn.Allocate.State
 
   def local_time(),
     do: :calendar.local_time()
@@ -10,7 +9,7 @@ defmodule Xirsys.Utils.Timing do
 
   def milliseconds_left(start_time, lifetime),
     do: seconds_left(start_time, lifetime) * 1_000
-  def milliseconds_left(%State{refresh_time: time, lifetime: life} = _state),
+  def milliseconds_left(%{refresh_time: time, lifetime: life} = _state),
     do: seconds_left(time, life) * 1_000
 
   defp seconds_left(start_time, lifetime) do

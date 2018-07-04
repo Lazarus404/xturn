@@ -29,7 +29,7 @@
 ###
 ###----------------------------------------------------------------------
 
-defmodule Xirsys.Turn.Response do
+defmodule Xirsys.Turn.Conn do
   @moduledoc """
   TURN connection object
   """
@@ -38,16 +38,34 @@ defmodule Xirsys.Turn.Response do
   alias Xirsys.Stun
   alias Xirsys.Turn.Conn
   alias Xirsys.Turn.Response
+  alias Xirsys.Sockets.Socket
 
   @vsn "0"
   @realm "xirsys.com"
   @software "xirsys-turnserver"
   @nonce "5543438859252a7c"
 
-  defstruct class: nil,
-            attrs: nil,
-            err_no: nil,
-            message: nil
+  defstruct listener: nil,
+            message: nil,
+            decoded_message: nil,
+            client_socket: nil,
+            client_ip: nil,
+            client_port: nil,
+            server_ip: nil,
+            server_port: nil,
+            is_control: false,
+            force_auth: false,
+            response: nil,
+            halt: nil
+
+  def halt(%Conn{} = conn),
+    do: %Conn{conn | halt: true}
+
+  def response(conn, class, attrs \\ nil)
+  def response(%Conn{} = conn, class, attrs) when is_atom(class),
+    do: %Conn{conn | response: %Response{class: class, attrs: attrs}}
+  def response(%Conn{} = conn, err, msg) when is_integer(err),
+    do: %Conn{conn | response: %Response{err_no: err, message: msg}} |> Conn.halt
 
   @doc """
   If a response message has been set, then we must notify the client according
@@ -97,11 +115,11 @@ defmodule Xirsys.Turn.Response do
 
   @spec respond(Conn) :: :ok
   defp respond(%Conn{decoded_message: %Stun{} = turn} = conn) do
-    case conn.listener do
+    case conn.client_socket do
       nil ->
         conn
-      listener ->
-        GenServer.cast(listener, {Stun.encode(turn, turn.key), conn.client_ip, conn.client_port})
+      client_socket ->
+        Socket.send(client_socket, Stun.encode(turn, turn.key), conn.client_ip, conn.client_port)
         conn
     end
   end
