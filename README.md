@@ -13,6 +13,61 @@ Supported Features
 - Channel Binding / Data IS supported!
 - WebRTC Data Channels ARE supported!
 
+Setup
+===
+Open the config file in `apps/xturn/config/`.  All options are there.
+
+Logging
+---
+Logging sloooooows the server down.  For production quality (faster than Google's), drop the Logging level to `:error` or `:info`.  Keeping at `:debug` is fine for development, but will provide a degragation of service.
+
+    config :logger,
+      level: :debug,
+      compile_time_purge_level: :debug
+
+Ports
+---
+The listening ports should be set, next.  Standard ports are already set, but it can oftimes be beneficial to open on 80 and 443, too.  Make sure to specify `:secure` on known secure ports, which will enable SSL.
+
+    config :xturn,
+      authentication: %{required: true},
+      permissions: %{required: false},
+      realm: "xirsys.com",
+      listen: [
+                {:udp, '0.0.0.0', 3478},
+                {:tcp, '0.0.0.0', 3478},
+                {:udp, '0.0.0.0', 5349, :secure},
+                {:tcp, '0.0.0.0', 5349, :secure}
+              ],
+      server_type: "turn",
+      server_id: "turn.myserver.com",
+      server_ip: {185, 136, 235, 163},
+      server_local_ip: {0, 0, 0, 0},
+      certs: [
+               {:certfile, "certs/server.crt"},
+               {:keyfile, "certs/server.key"}
+             ]
+
+*authentication*: specifying required as `true` will prevent connections without a valid user and password in the user store
+
+*permissions*: TURN usually requires a `create permissions` call.  Setting requireed to false will allow connections without permissions being set.
+
+*server_ip*: this is the public IP of your server.  Not all server setups make this aware to the app, so it's necessary to set this manually (for now).
+
+*server_local_ip*: this is the internal IP to bind sockets to.  Again, this may be temporary.  You still need to set the IP in the individual socket listeners, too.
+
+Note that `server_type` is a Xirsys thing and can be ignored.
+
+Maru
+---
+
+Maru is an Elixir HTTP server library.  This TURN server provide some lightweight API features for creating user credentials and viewing throughput stats.  This will improve with time (it's just for testing atm).
+
+    config :maru, Xirsys.API,
+      http: [port: 8880]
+
+Change the port number to access the API from a different port.
+
 Future Plans
 ===
 
