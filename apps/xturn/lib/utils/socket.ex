@@ -100,19 +100,15 @@ defmodule Xirsys.Utils.Socket do
   @doc """
   Sends a message over an open udp socket port
   """
-  @spec send(Socket.t, tuple(), integer(), binary()) :: :ok | {:error, term()}
-  def send(%Socket{type: :udp, sock: socket}, ip, port, msg),
+  @spec send(Socket.t, binary(), tuple(), integer()) :: :ok | {:error, term()}
+  def send(socket, msg, ip \\ nil, port \\ nil)
+  def send(%Socket{type: :udp, sock: socket}, msg, ip, port),
     do: :gen_udp.send(socket, ip, port, msg)
-
-  @doc """
-  Sends a message over an open accepted socket port
-  """
-  @spec send(Socket.t, binary()) :: :ok | {:error, term()}
-  def send(%Socket{type: :tcp, sock: socket}, msg),
+  def send(%Socket{type: :tcp, sock: socket}, msg, _, _),
     do: :gen_tcp.send(socket, msg)
-  def send(%Socket{type: :dtls, sock: socket}, msg),
+  def send(%Socket{type: :dtls, sock: socket}, msg, _, _),
     do: :ssl.send(socket, msg)
-  def send(%Socket{type: :tls, sock: socket}, msg),
+  def send(%Socket{type: :tls, sock: socket}, msg, _, _),
     do: :ssl.send(socket, msg)
 
   @doc """

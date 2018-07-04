@@ -295,11 +295,11 @@ defmodule Xirsys.Turn.Allocate.Client do
   end
   def send_data(msg, cip, cport, %Socket{} = socket) do
     Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on socket #{inspect socket}"
-    Socket.send(socket, cip, cport, msg)
+    Socket.send(socket, msg, cip, cport)
   end
   def send_data(msg, cip, cport, state) do
     Logger.debug "POSTING to #{inspect cip}:#{inspect cport} on relayed socket #{inspect state.relayed_socket}"
-    Socket.send(state.relayed_socket, cip, cport, msg)
+    Socket.send(state.relayed_socket, msg, cip, cport)
   end
 
   def send_data_channel(channel_number, data, socket, channel_cache) do

@@ -85,7 +85,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
   Asynchronous socket response handler
   """
   def handle_cast({msg, ip, port}, state) do
-    Socket.send(state.socket, ip, port, msg)
+    Socket.send(state.socket, msg, ip, port)
     {:noreply, state}
   end
 
