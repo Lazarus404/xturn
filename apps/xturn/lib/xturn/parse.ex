@@ -64,7 +64,7 @@ defmodule Xirsys.Turn.Parse do
   def process_message(%Conn{message: <<@stun_marker::2, _::14, _rest::binary>> = msg} = conn) do
     Logger.debug "TURN Data received"
     {:ok, turn} = Stun.decode(msg)
-    do_request(%Conn{conn | decoded_message: turn}) |> Response.send()
+    do_request(%Conn{conn | decoded_message: turn}) |> Conn.send()
   end
 
   @doc """

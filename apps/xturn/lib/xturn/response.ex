@@ -33,76 +33,11 @@ defmodule Xirsys.Turn.Response do
   @moduledoc """
   TURN connection object
   """
-  require Logger
-
-  alias Xirsys.Stun
-  alias Xirsys.Turn.Conn
-  alias Xirsys.Turn.Response
 
   @vsn "0"
-  @realm "xirsys.com"
-  @software "xirsys-turnserver"
-  @nonce "5543438859252a7c"
 
   defstruct class: nil,
             attrs: nil,
             err_no: nil,
             message: nil
-
-  @doc """
-  If a response message has been set, then we must notify the client according
-  to the STUN and TURN specifications.
-  """
-  @spec send(Conn) :: :ok
-  def send(%Conn{response: %Response{err_no: err, message: msg}} = conn) when is_integer(err) do
-    conn
-    |> build_response(err, msg)
-    |> respond()
-  end
-  def send(%Conn{response: %Response{class: cls, attrs: attrs}} = conn) when is_atom(cls) do
-    conn
-    |> build_response(cls, attrs)
-    |> respond()
-  end
-  def send(%Conn{} = conn) do
-    Logger.info "SEND: #{inspect conn}"
-    conn
-  end
-  def send(v) do
-    Logger.info "SEND: #{inspect v}"
-    v
-  end
-
-  @spec build_response(Conn, atom() | Integer, String.t | list()) :: Conn
-  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, class, attrs) when is_atom(class) do
-    new_attrs = cond do
-      is_map(attrs) ->
-        Map.put(attrs, :software, @software)
-      true ->
-        %{software: @software}
-    end
-    fingerprint = turn.integrity
-    Logger.info "#{inspect new_attrs}"
-    %Conn{conn | decoded_message: %Stun{turn | class: class, fingerprint: fingerprint, attrs: new_attrs}}
-  end
-  defp build_response(%Conn{decoded_message: %Stun{} = turn} = conn, err_no, err_msg) when is_integer(err_no) do
-    new_attrs = %{
-      error_code: {err_no, err_msg},
-      nonce: @nonce,
-      realm: @realm,
-      software: @software
-    }
-    %Conn{conn | decoded_message: %Stun{turn | class: :error, attrs: new_attrs}}
-  end
-
-  @spec respond(Conn) :: :ok
-  defp respond(%Conn{decoded_message: %Stun{} = turn} = conn) do
-    case conn.listener do
-      nil ->
-        conn
-      listener ->
-        GenServer.cast(listener, {Stun.encode(turn, turn.key), conn.client_ip, conn.client_port})
-        conn
-    end
-  end
 end
