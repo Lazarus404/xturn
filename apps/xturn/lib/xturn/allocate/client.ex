@@ -194,23 +194,9 @@ defmodule Xirsys.Turn.Allocate.Client do
     Logger.debug "#{inspect state}"
     bytes_in =
     with true <- (not require_perms()) or Xirsys.Turn.Cache.Store.has_key?(state.permissions, ip) do
-      length = byte_size(packet)
-      peer_address = {ip, in_port}
-      Logger.debug "sending #{inspect length} bytes to client"
-      data =
-      case Channels.lookup({peer_address, Tuple5.to_map(state.tuple5)}) do
-        {:ok, [[channel_number, _client]|_]} ->
-          chan_packet = <<channel_number::16, length::16>> <> packet
-          Logger.debug "sending #{inspect byte_size(chan_packet)} bytes (with header) to client"
-          chan_packet
-        _ ->
-          attrs = %{}
-          tmp_attrs = Map.put(attrs, :xor_peer_address, {ip, in_port})
-          data_attrs = Map.put(tmp_attrs, :data, packet)
-          <<tid::96>> = :crypto.strong_rand_bytes(12)
-          conn = %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: data_attrs}
-          Stun.encode(conn)
-      end
+      len = byte_size(packet)
+      Logger.debug "sending #{inspect len} bytes to client"
+      data = channel_or_stun(packet, {ip, in_port}, state.tuple5, len)
       Socket.send(state.client_socket, data, state.tuple5.client_address, state.tuple5.client_port)
       byte_size(data)
     else
@@ -218,7 +204,7 @@ defmodule Xirsys.Turn.Allocate.Client do
         Logger.info "peer permission not available #{inspect state.tuple5}"
         0
     end
-    :inet.setopts(socket, [{:active, :once}, :binary])
+    Socket.setopts(socket)
     {:noreply, %State{state | bytes_in: state.bytes_in + bytes_in}, Time.milliseconds_left(state)}
   end
 
@@ -231,11 +217,11 @@ defmodule Xirsys.Turn.Allocate.Client do
   def handle_call(:get_permission_cache, _from, state),
     do: {:reply, {:ok, state.permissions}, state, Time.milliseconds_left(state)}
   def handle_call(:dont_fragment, _from, state) do
-    res = :inet.setopts(state.relayed_socket,[{:raw,0,10,<<2::native-size(32)>>}])
+    res = Socket.setopts(state.relayed_socket,[{:raw,0,10,<<2::native-size(32)>>}])
     {:reply, res, state, Time.milliseconds_left(state)}
   end
   def handle_call(:clear_header, _from, state) do
-    res = :inet.setopts(state.relayed_socket,[{:raw,0,10,<<0::native-size(32)>>}])
+    res = Socket.setopts(state.relayed_socket,[{:raw,0,10,<<0::native-size(32)>>}])
     {:reply, res, state, Time.milliseconds_left(state)}
   end
   def handle_call({:add_channel, channel_number, peer_address}, _from, state) do
@@ -343,5 +329,19 @@ defmodule Xirsys.Turn.Allocate.Client do
     {pip, pport} = channel.peer_address
     send_data(data, pip, pport, socket)
     byte_size(data)
+  end
+
+  defp channel_or_stun(packet, {_, _} = peer_address, %Tuple5{} = tuple5, len) do
+    case Channels.lookup({peer_address, Tuple5.to_map(tuple5)}) do
+      {:ok, [[channel_number, _client]|_]} ->
+        <<channel_number::16, len::16>> <> packet
+      _ ->
+        attrs = %{}
+        |> Map.put(:xor_peer_address, peer_address)
+        |> Map.put(:data, packet)
+        <<tid::96>> = :crypto.strong_rand_bytes(12)
+        %Stun{class: :indication, method: :data, transactionid: tid, integrity: :false, fingerprint: :false, attrs: attrs}
+        |> Stun.encode()
+    end
   end
 end

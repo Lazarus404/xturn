@@ -47,6 +47,8 @@ defmodule Xirsys.Sockets.Socket do
   @channel_msg 1
   @send_msg 0
 
+  @setopts_default [{:active, :once}, :binary]
+
   @doc """
   Returns the server ip from config for packet use
   """
@@ -114,17 +116,14 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sets one or more options for a socket.
   """
-  @spec setopts(Socket.t) :: :ok | {:error, term()}
-  def setopts(%Socket{type: type, sock: socket}) when type in [:udp, :tcp],
-    do: :inet.setopts(socket, [{:active, :once}, :binary])
-  def setopts(%Socket{type: _, sock: socket}),
-    do: :ssl.setopts(socket, [{:active, :once}, :binary])
-
   @spec setopts(Socket.t, list()) :: :ok | {:error, term()}
+  def setopts(socket, opts \\ @setopts_default)
   def setopts(%Socket{type: type, sock: socket}, opts) when type in [:udp, :tcp],
     do: :inet.setopts(socket, opts)
   def setopts(%Socket{type: _, sock: socket}, opts),
     do: :ssl.setopts(socket, opts)
+  def setopts(socket, opts),
+    do: :inet.setopts(socket, opts)
 
   def getopts(%Socket{type: type, sock: socket}) when type in [:tls, :dtls],
     do: :ssl.getopts(socket, [:active, :nodelay, :keepalive, :delay_send, :priority, :tos, :buffer, :recbuf, :sndbuf])
