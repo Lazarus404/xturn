@@ -1,17 +1,31 @@
-# This file is responsible for configuring your application
-# and its dependencies with the aid of the Mix.Config module.
 use Mix.Config
 
-# By default, the umbrella project as well as each child
-# application will require this configuration file, ensuring
-# they all use the same configuration. While one could
-# configure all applications here, we prefer to delegate
-# back to each application for organization purposes.
-import_config "../apps/*/config/config.exs"
+config :logger,
+  level: :debug,
+  compile_time_purge_level: :debug
 
-# Sample configuration (overrides the imported configuration above):
-#
-#     config :logger, :console,
-#       level: :info,
-#       format: "$date $time [$level] $metadata$message\n",
-#       metadata: [:user_id]
+config :xturn,
+  authentication: %{required: false},
+  permissions: %{required: true},
+  realm: "xirsys.com",
+  listen: [
+    {:udp, '0.0.0.0', 3478},
+    {:tcp, '0.0.0.0', 3478},
+    # {:udp, '0.0.0.0', 80},
+    # {:tcp, '0.0.0.0', 80},
+    {:udp, '0.0.0.0', 5349, :secure},
+    # ,
+    {:tcp, '0.0.0.0', 5349, :secure}
+    # {:udp, '0.0.0.0', 443, :secure},
+    # {:tcp, '0.0.0.0', 443, :secure}
+  ],
+  server_type: "turn",
+  server_id: "turn.tstitch.me",
+  server_ip: {185, 136, 235, 163},
+  server_local_ip: {0, 0, 0, 0},
+  certs: [
+    {:certfile, "certs/server.crt"},
+    {:keyfile, "certs/server.key"}
+  ]
+
+config :maru, Xirsys.API, http: [port: 8880]
