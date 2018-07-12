@@ -15,7 +15,7 @@ Supported Features
 
 Setup
 ===
-Open the config file in `apps/xturn/config/`.  All options are there.
+Open the `config.exs` file in `config`.  All options are there.
 
 Logging
 ---
@@ -41,7 +41,7 @@ The listening ports should be set, next.  Standard ports are already set, but it
               ],
       server_type: "turn",
       server_id: "turn.myserver.com",
-      server_ip: {185, 136, 235, 163},
+      server_ip: {127, 0, 0, 1},
       server_local_ip: {0, 0, 0, 0},
       certs: [
                {:certfile, "certs/server.crt"},
@@ -81,6 +81,8 @@ Future Plans
 
 Changelog
 ===
+12-07-2018 - Externalised XMediaLib as a separate library
+
 04-07-2018 - Aside from some cleanup, client calls were short-cicuited through direct passing of the client socket ref, rather than the GenServer pid
 
 02-07-2018 - Get working with test.webrtc.org

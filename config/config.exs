@@ -21,7 +21,7 @@ config :xturn,
   ],
   server_type: "turn",
   server_id: "turn.tstitch.me",
-  server_ip: {185, 136, 235, 163},
+  server_ip: {127, 0, 0, 1},
   server_local_ip: {0, 0, 0, 0},
   certs: [
     {:certfile, "certs/server.crt"},
