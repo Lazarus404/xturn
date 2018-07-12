@@ -29,7 +29,7 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.Sockets.UDP_Listener do
+defmodule Xirsys.Sockets.Listener.UDP do
   @moduledoc """
   UDP protocol socket handler for STUN connections
   """
@@ -149,7 +149,7 @@ defmodule Xirsys.Sockets.UDP_Listener do
           nopts = opts ++ certs ++ [protocol: :dtls]
           {:ok, fd} = :ssl.listen(port, nopts)
           fd = %Socket{type: :dtls, sock: fd}
-          Xirsys.Sockets.TCP_Client.create(fd, cb, ssl)
+          Xirsys.Sockets.Client.create(fd, cb, ssl)
           {:ok, %{listener: fd, ssl: ssl}}
 
         _ ->

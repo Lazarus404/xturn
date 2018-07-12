@@ -29,7 +29,7 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.Sockets.TCP_Client do
+defmodule Xirsys.Sockets.Client do
   @moduledoc """
   TCP protocol socket client for STUN connections
   """
@@ -50,7 +50,7 @@ defmodule Xirsys.Sockets.TCP_Client do
   end
 
   def create(socket, callback, ssl) do
-    Xirsys.Sockets.TCP_Supervisor.start_child(socket, callback, ssl)
+    Xirsys.Sockets.SockSupervisor.start_child(socket, callback, ssl)
   end
 
   def init([socket, callback, ssl]) do

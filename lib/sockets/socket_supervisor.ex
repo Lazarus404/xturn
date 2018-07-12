@@ -29,7 +29,7 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.Sockets.TCP_Supervisor do
+defmodule Xirsys.Sockets.SockSupervisor do
   use Supervisor
   require Logger
 
@@ -46,7 +46,7 @@ defmodule Xirsys.Sockets.TCP_Supervisor do
   end
 
   def init([]) do
-    tree = [worker(Xirsys.Sockets.TCP_Client, [], restart: :temporary)]
+    tree = [worker(Xirsys.Sockets.Client, [], restart: :temporary)]
     supervise(tree, strategy: :simple_one_for_one)
   end
 end

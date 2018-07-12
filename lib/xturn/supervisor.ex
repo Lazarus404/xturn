@@ -33,7 +33,8 @@ defmodule Xirsys.XTurn.Supervisor do
   use Supervisor
 
   alias Xirsys.XTurn.{Server, Allocate, Auth}
-  alias Xirsys.Sockets.{TCP_Supervisor, TCP_Listener, UDP_Listener}
+  alias Xirsys.Sockets.Listener.{TCP, UDP}
+  alias Xirsys.Sockets.SockSupervisor
 
   def start_link(listen, cb) do
     Supervisor.start_link(__MODULE__, [listen, cb])
@@ -53,7 +54,7 @@ defmodule Xirsys.XTurn.Supervisor do
         worker(Server, []),
         worker(Allocate.Supervisor, [Allocate.Client]),
         worker(Auth.Supervisor, []),
-        worker(TCP_Supervisor, [])
+        worker(SockSupervisor, [])
       ] ++ children,
       strategy: :one_for_one
     )
@@ -69,7 +70,7 @@ defmodule Xirsys.XTurn.Supervisor do
     worker(listener(type), [cb, ip, port, secure == :secure], id: id(type, port, secure))
   end
 
-  defp listener(:tcp), do: TCP_Listener
-  defp listener(:udp), do: UDP_Listener
+  defp listener(:tcp), do: TCP
+  defp listener(:udp), do: UDP
   defp id(type, port, secure \\ ""), do: "#{type}_listener_#{secure}_#{port}"
 end

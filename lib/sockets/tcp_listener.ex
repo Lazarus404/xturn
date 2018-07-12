@@ -29,7 +29,7 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.Sockets.TCP_Listener do
+defmodule Xirsys.Sockets.Listener.TCP do
   @moduledoc """
   TCP protocol socket listener for STUN connections. Dispatches to TCP
   clients once listener socket has been set up.
@@ -108,7 +108,7 @@ defmodule Xirsys.Sockets.TCP_Listener do
             {:ok, %Socket{type: :tcp, sock: sock}}
         end
 
-      Xirsys.Sockets.TCP_Client.create(socket, cb, ssl)
+      Xirsys.Sockets.Client.create(socket, cb, ssl)
       Logger.info("TCP listener started at [#{:inet_parse.ntoa(ip)}:#{port}]")
       {:ok, %{listener: socket, ssl: ssl}}
     else
