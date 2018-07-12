@@ -29,15 +29,13 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.XTurn.Conn do
+defmodule Xirsys.Sockets.Conn do
   @moduledoc """
   TURN connection object
   """
   require Logger
 
-  alias Xirsys.XTurn.Conn
-  alias Xirsys.XTurn.Response
-  alias Xirsys.Sockets.Socket
+  alias Xirsys.Sockets.{Conn, Response, Socket}
   alias XMediaLib.Stun
 
   @vsn "0"

@@ -48,12 +48,12 @@ defmodule Xirsys.XTurn.Commands do
   @createpermission [:authenticates, :createperm]
   @indication [:send_indication]
 
-  alias Xirsys.XTurn.{Tuple5, Conn, Response}
+  alias Xirsys.XTurn.Tuple5
   alias Xirsys.XTurn.Allocate.Store
   alias Xirsys.XTurn.Channels.Store, as: Channels
   alias Xirsys.XTurn.Allocate.Client, as: AllocateClient
   alias Xirsys.XTurn.Auth.Client, as: AuthClient
-  alias Xirsys.Sockets.Socket
+  alias Xirsys.Sockets.{Socket, Conn, Response}
   alias XMediaLib.Stun
 
   @doc """

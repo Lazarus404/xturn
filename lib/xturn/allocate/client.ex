@@ -45,7 +45,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
   alias Xirsys.XTurn.Channels.Channel
   alias Xirsys.XTurn.Cache.Store, as: Cache
   alias Xirsys.XTurn.Tuple5
-  alias Xirsys.Utils.Timing, as: Time
+  alias Xirsys.XTurn.Timing, as: Time
   alias Xirsys.Sockets.Socket
   alias XMediaLib.Stun
 

@@ -1,4 +1,4 @@
-defmodule Xirsys.Utils.Timing do
+defmodule Xirsys.XTurn.Timing do
   def local_time(),
     do: :calendar.local_time()
 

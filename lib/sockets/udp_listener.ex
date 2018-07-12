@@ -40,8 +40,7 @@ defmodule Xirsys.Sockets.Listener.UDP do
   @buf_size 1024 * 1024 * 1024
   @opts [active: false, buffer: @buf_size, recbuf: @buf_size, sndbuf: @buf_size]
 
-  alias Xirsys.XTurn.Conn
-  alias Xirsys.Sockets.Socket
+  alias Xirsys.Sockets.{Socket, Conn}
 
   #####
   # External API

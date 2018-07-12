@@ -34,8 +34,7 @@ defmodule Xirsys.Sockets.Socket do
   Socket protocol helpers
   """
   require Logger
-  alias Xirsys.XTurn.Conn
-  alias Xirsys.Sockets.Socket
+  alias Xirsys.Sockets.{Socket, Conn}
 
   defstruct type: :udp, sock: nil
 
