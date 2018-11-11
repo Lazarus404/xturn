@@ -40,7 +40,7 @@ defmodule Xirsys.Sockets.Socket do
 
   @type t :: {
           type :: :udp | :tcp | :dtls | :tls,
-          sock :: any()
+          sock :: port()
         }
 
   @channel_msg 1
@@ -95,7 +95,7 @@ defmodule Xirsys.Sockets.Socket do
   socket, otherwise simply accepts an incoming connection request
   on a listening socket.
   """
-  @spec handshake(Socket.t()) :: {:ok, Socket.t()}
+  @spec handshake(%Socket{}) :: {:ok, %Socket{}} | {:error, any()}
   def handshake(%Socket{type: :tcp, sock: socket}) do
     with {:ok, cli_socket} <- :gen_tcp.accept(socket) do
       {:ok, %Socket{type: :tcp, sock: cli_socket}}
@@ -112,7 +112,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sends a message over an open udp socket port
   """
-  @spec send(Socket.t(), binary(), tuple(), integer()) :: :ok | {:error, term()}
+  @spec send(%Socket{}, binary(), tuple() | nil, integer() | nil) :: :ok | {:error, term()} | no_return()
   def send(socket, msg, ip \\ nil, port \\ nil)
 
   def send(%Socket{type: :udp, sock: socket}, msg, ip, port),
@@ -130,7 +130,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sets one or more options for a socket.
   """
-  @spec setopts(Socket.t(), list()) :: :ok | {:error, term()}
+  @spec setopts(port() | %Socket{}, list()) :: :ok | {:error, term()}
   def setopts(socket, opts \\ @setopts_default)
 
   def setopts(%Socket{type: type, sock: socket}, opts) when type in [:udp, :tcp],
@@ -173,7 +173,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Apply specific socket option for STUN connection
   """
-  @spec set_sockopt(Socket.t(), Socket.t()) :: :ok
+  @spec set_sockopt(%Socket{}, %Socket{}) :: :ok
   def set_sockopt(%Socket{type: type} = list_sock, %Socket{type: type} = cli_socket)
       when type in [:tls, :dtls] do
     try do
@@ -207,7 +207,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the local address and port number for a socket.
   """
-  @spec sockname(Socket.t()) ::
+  @spec sockname(any()) ::
           {:ok, {tuple(), integer()}}
           | {:local, binary()}
           | {:unspec, <<>>}
@@ -222,7 +222,7 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Returns the peer address and port number for a socket.
   """
-  @spec peername(Socket.t() | any()) ::
+  @spec peername(any()) ::
           {:ok, {tuple(), integer()}}
           | {:local, binary()}
           | {:unspec, <<>>}
@@ -240,31 +240,37 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Closes a socket of any type.s
   """
-  @spec close(Socket.t()) :: :ok
+  @spec close(Socket.t() | any(), any()) :: :ok
   def close(sock, reason \\ "")
 
   def close(%Socket{type: :udp, sock: socket}, reason) do
     :gen_udp.close(socket)
     Logger.debug("UDP listener closed: #{inspect(reason)}")
+    :ok
   end
 
   def close(%Socket{type: :tcp, sock: socket}, reason) do
     :gen_tcp.close(socket)
     Logger.debug("UDP listener closed: #{inspect(reason)}")
+    :ok
   end
 
   def close(%Socket{type: :dtls, sock: socket}, reason) do
     :ssl.close(socket)
     Logger.debug("DTLS listener closed: #{inspect(reason)}")
+    :ok
   end
 
   def close(%Socket{type: :tls, sock: socket}, reason) do
     :ssl.close(socket)
     Logger.debug("TLS listener closed: #{inspect(reason)}")
+    :ok
   end
 
-  def close(nil, _),
-    do: Logger.debug("Caught attempted close of nil socket")
+  def close(_, _) do
+    Logger.debug("Caught attempted close of nil socket")
+    :ok
+  end
 
   # ----------------------------
   # Private functions
@@ -352,10 +358,6 @@ defmodule Xirsys.Sockets.Socket do
       {:error, reason} ->
         Logger.error("UDP open #{inspect(udp_options)} -> #{inspect(reason)}")
         {:error, reason}
-
-      {EXIT, _} = reason ->
-        Logger.error("UDP open #{inspect(udp_options)} -> #{inspect(reason)}")
-        {:error, reason}
     end
   end
 
@@ -369,10 +371,6 @@ defmodule Xirsys.Sockets.Socket do
         open_free_udp_port(policy2, udp_options)
 
       {:error, reason} ->
-        Logger.error("UDP open #{inspect([0 | udp_options])} -> #{inspect(reason)}")
-        {:error, reason}
-
-      {EXIT, _} = reason ->
         Logger.error("UDP open #{inspect([0 | udp_options])} -> #{inspect(reason)}")
         {:error, reason}
     end
@@ -394,10 +392,6 @@ defmodule Xirsys.Sockets.Socket do
         open_free_udp_port(policy2, udp_options)
 
       {:error, reason} ->
-        Logger.error("UDP open #{inspect([0 | udp_options])} -> #{inspect(reason)}")
-        {:error, reason}
-
-      {EXIT, _} = reason ->
         Logger.error("UDP open #{inspect([0 | udp_options])} -> #{inspect(reason)}")
         {:error, reason}
     end

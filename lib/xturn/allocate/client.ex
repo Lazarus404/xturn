@@ -231,13 +231,7 @@ defmodule Xirsys.XTurn.Allocate.Client do
     end
   end
 
-  def handle_call({:open_port, :random = policy, opts}, from, state),
-    do: open_port_call({policy, opts}, from, state)
-
-  def handle_call({:open_port, {:preferred, _port} = policy, opts}, from, state),
-    do: open_port_call({policy, opts}, from, state)
-
-  def handle_call({:open_port, {:range, _min, _max} = policy, opts}, from, state),
+  def handle_call({:open_port, policy, opts}, from, state),
     do: open_port_call({policy, opts}, from, state)
 
   def handle_call(:get_permission_cache, _from, state),

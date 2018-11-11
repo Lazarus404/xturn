@@ -29,23 +29,58 @@
 ###
 ### ----------------------------------------------------------------------
 
-defmodule Xirsys.XTurn do
-  @moduledoc """
-  Application stub, used to parent TURN connections supervisor
+defmodule Xirsys.XTurn.Actions.Refresh do
+  @doc """
+  Updates an allocations current expiry to its maximum set lifetime value
   """
-  use Application
+  require Logger
+  alias Xirsys.XTurn.Allocate.Store
+  alias Xirsys.XTurn.Allocate.Client, as: AllocateClient
+  alias Xirsys.XTurn.Tuple5
+  alias Xirsys.Sockets.Conn
+  alias XMediaLib.Stun
 
-  def start(_type, _args) do
-    Xirsys.XTurn.Allocate.Store.init()
-    Xirsys.XTurn.Channels.Store.init()
+  def process(%Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
+    Logger.debug("refreshing #{inspect(conn.decoded_message)}")
 
-    Xirsys.XTurn.Supervisor.start_link(
-      Application.get_env(:xturn, :listen),
-      Xirsys.XTurn.Commands
-    )
+    with true <- Map.has_key?(attrs, :lifetime),
+         val <- Map.get(attrs, :lifetime),
+         tuple5 <- Tuple5.to_map(Tuple5.create(conn, :_)) do
+      do_refresh(conn, val, tuple5)
+    else
+      _ ->
+        Logger.info("LIFETIME attribute not found during refresh request")
+        Conn.response(conn, 400, "Bad Request")
+    end
   end
 
-  def main(argv) do
-    main(argv)
+  defp do_refresh(conn, <<0::32>>, tuple5) do
+    case Store.lookup(tuple5) do
+      {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
+        Logger.debug("Refreshing with 0 time")
+        AllocateClient.refresh(client, 0)
+
+      {:error, :not_found} ->
+        Conn.response(conn, 437, "Allocation Mismatch")
+    end
+  end
+
+  defp do_refresh(conn, <<b::32>>, tuple5) when is_integer(b) do
+    b = if b > 600, do: 600, else: b
+
+    case Store.lookup(tuple5) do
+      {:ok, [client, {_relay_ip, _relay_port}, _, _]} ->
+        AllocateClient.refresh(client, b)
+        new_attrs = %{lifetime: <<b::32>>}
+        Conn.response(conn, :success, new_attrs)
+
+      {:error, :not_found} ->
+        Conn.response(conn, 437, "Allocation Mismatch")
+    end
+  end
+
+  defp do_refresh(conn, val, _) do
+    Logger.info("Bad value #{inspect(val)} in refresh request")
+    Conn.response(conn, 400, "Bad Request")
   end
 end

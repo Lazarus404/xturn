@@ -84,7 +84,7 @@ defmodule Xirsys.Sockets.Listener.TCP do
     {:stop, :normal, state}
   end
 
-  def terminate(reason, %{:listener => listener} = _state) do
+  def terminate(_reason, %{:listener => listener} = _state) do
     Socket.close(listener)
     :ok
   end
