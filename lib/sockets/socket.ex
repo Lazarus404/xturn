@@ -112,7 +112,8 @@ defmodule Xirsys.Sockets.Socket do
   @doc """
   Sends a message over an open udp socket port
   """
-  @spec send(%Socket{}, binary(), tuple() | nil, integer() | nil) :: :ok | {:error, term()} | no_return()
+  @spec send(%Socket{}, binary(), tuple() | nil, integer() | nil) ::
+          :ok | {:error, term()} | no_return()
   def send(socket, msg, ip \\ nil, port \\ nil)
 
   def send(%Socket{type: :udp, sock: socket}, msg, ip, port),
