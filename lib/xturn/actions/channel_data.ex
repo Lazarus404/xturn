@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,40 +30,55 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.XTurn.Actions.ChannelData do
-  @doc """
-  Handles incoming channel data. We route this directly to the peers, if they exist and
-  have valid channels open.
-  """
-  require Logger
-  alias Xirsys.XTurn.Channels.Store, as: Channels
-  alias Xirsys.XTurn.Allocate.Client, as: AllocateClient
-  alias Xirsys.XTurn.Tuple5
-  alias Xirsys.Sockets.Conn
+  @moduledoc """
+  Pipeline action for TURN **ChannelData** messages.
 
-  def process(%Conn{is_control: true}) do
-    Logger.debug("cannot send channel data on control connection")
-    false
+  ## What problem this solves
+
+  After ChannelBind, clients send media as compact ChannelData frames (not
+  full STUN). This action looks up the bound peer and forwards the payload
+  through the relay.
+
+  Not a STUN request method; handled in the `@channeldata` chain when the
+  message prefix indicates channel data rather than a STUN header.
+
+  ## Internal
+
+  Pipeline action only; also invoked from the media fast path via `DataPlane`.
+  Not part of the public application API.
+
+  ## RFCs
+
+  * [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) - ChannelData (pt.11)
+  """
+  alias Xirsys.XTurn.DataPlane
+  alias Xirsys.XTurn.Conn
+
+  @doc """
+  Forwards raw channel-data payload to the bound peer via `DataPlane`.
+
+  Returns conn unchanged on forward or drop, `false` when no matching channel
+  exists, or `false` on the TCP control socket.
+  """
+  def process(%Conn{is_control: true}), do: false
+
+  def process(%Conn{message: message} = conn) do
+    case DataPlane.forward_channel(message, meta(conn)) do
+      :ok -> conn
+      :not_found -> false
+      :drop -> conn
+    end
   end
 
-  def process(%Conn{message: <<1::2, num::14, _length::16, data::binary>>} = conn) do
-    channel = <<1::2, num::14>>
-
-    Logger.debug(
-      "channel data (#{byte_size(data)} bytes) received on channel #{inspect(channel)}"
-    )
-
-    proto = :_
-    tuple5 = Tuple5.to_map(Tuple5.create(conn, proto))
-
-    case Channels.lookup({channel, tuple5}) do
-      {:ok, [[client, _peer_address, socket, channel_cache] | _tail]} ->
-        # already short circuited
-        AllocateClient.send_channel(client, channel, data, socket, channel_cache)
-        conn
-
-      {:error, :not_found} ->
-        Logger.debug("channel #{inspect(channel)} does not exist in ETS")
-        false
-    end
+  defp meta(%Conn{} = conn) do
+    %{
+      client_ip: conn.client_ip,
+      client_port: conn.client_port,
+      server_ip: conn.server_ip,
+      server_port: conn.server_port,
+      transport: conn.client_socket.transport,
+      socket: conn.client_socket.socket,
+      is_control: conn.is_control
+    }
   end
 end

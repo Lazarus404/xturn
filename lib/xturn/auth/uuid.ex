@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -31,11 +31,37 @@
 
 defmodule Xirsys.XTurn.Auth.UUID do
   @moduledoc """
-  provides UUID generation for authentication
+  Random identifiers and hex encoding for TURN credential challenges.
+
+  ## What problem this solves
+
+  Long-term STUN/TURN authentication needs unpredictable nonces and usernames
+  on the wire. This module produces lowercase hex strings from cryptographically
+  random bytes and time-prefixed nonce material without an external UUID library.
+
+  Internal: called by `Auth.NonceStore` and `Auth.Client` during credential
+  provisioning and 401 challenge issuance.
+
+  ## RFCs
+
+  - [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) (long-term credentials,
+    NONCE attribute, MESSAGE-INTEGRITY)
+  - [RFC 5389](https://www.rfc-editor.org/rfc/rfc5389) (STUN long-term credential
+    mechanism, legacy interop)
   """
-  require Logger
   @vsn "0"
 
+  @doc """
+  Hex-encodes a binary, byte list, or empty list to lowercase ASCII char codes.
+
+  ## Examples
+
+      iex> Xirsys.XTurn.Auth.UUID.to_hex(<<0xAB, 0x0C>>)
+      ~c"ab0c"
+
+      iex> Xirsys.XTurn.Auth.UUID.to_hex([])
+      []
+  """
   def to_hex([]),
     do: []
 
@@ -45,19 +71,43 @@ defmodule Xirsys.XTurn.Auth.UUID do
   def to_hex([h | t]),
     do: [to_digit(div(h, 16)), to_digit(rem(h, 16)) | to_hex(t)]
 
+  @doc """
+  Maps a nibble (`0`-`15`) to its lowercase hex ASCII code.
+
+  ## Parameters
+
+    * `n` - integer from `0` to `15`
+
+  ## Examples
+
+      iex> Xirsys.XTurn.Auth.UUID.to_digit(9)
+      57
+
+      iex> Xirsys.XTurn.Auth.UUID.to_digit(10)
+      97
+  """
   def to_digit(n) when n < 10 do
-    [t] = '0'
+    [t] = ~c"0"
     t + n
   end
 
   def to_digit(n) do
-    [t] = 'a'
+    [t] = ~c"a"
     t + n - 10
   end
 
+  @doc """
+  Returns 32 lowercase hex characters from 16 cryptographically random bytes.
+  """
   def random(),
     do: to_hex(:crypto.strong_rand_bytes(16))
 
+  @doc """
+  Returns a time-prefixed nonce binary for credential challenges.
+
+  The prefix is 14 uppercase hex digits of microseconds since the Unix epoch,
+  followed by 18 lowercase hex characters from 9 random bytes.
+  """
   def utc_random() do
     now = {_, _, micro} = :erlang.timestamp()
     nowish = :calendar.now_to_universal_time(now)
@@ -66,10 +116,4 @@ defmodule Xirsys.XTurn.Auth.UUID do
     prefix = :io_lib.format("~14.16.0b", [(nowsecs - then) * 1_000_000 + micro])
     :erlang.list_to_binary(prefix ++ to_hex(:crypto.strong_rand_bytes(9)))
   end
-
-  def new_prefix(),
-    do: to_hex(:crypto.strong_rand_bytes(13))
-
-  def inc(),
-    do: :rand.uniform(0xFFE)
 end

@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,40 +30,159 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.API.Router.Auth do
+  @moduledoc """
+  Operator REST routes under `/auth` for credential management.
+
+  ## What problem this solves
+
+  WebRTC signaling backends and operators need to create long-term TURN
+  credentials and mint coturn-compatible REST shared-secret username/password
+  pairs without custom tooling. `POST /auth` adds or generates users in
+  `Auth.Client`; `GET /auth/rest` returns TTL credentials when shared-secret
+  auth is enabled (503 when disabled).
+
+  Responses include suggested `turn:` / `turns:` URIs derived from server config.
+
+  ## RFCs
+
+  - [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) (long-term credentials,
+    MESSAGE-INTEGRITY)
+  - [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) (TURN URIs returned by
+    REST minting)
+  - TURN REST shared-secret credentials (coturn-compatible TTL usernames)
+  """
   use Maru.Router
+
+  alias Xirsys.XTurn.ListenConfig
 
   namespace :auth do
     desc("Adds a user to the user list")
 
-    params do
-      optional(:username, type: String)
-      optional(:password, type: String)
-      # This is used for analytics purposes. Maybe a room name or project name
-      optional(:namespace, type: String)
-      # id of the account creating the user. Useful for analytics and billing
-      optional(:peer_id, type: String)
-    end
-
     post do
-      if not params[:username] or not params[:password] do
-        {:ok, u, p} =
-          Xirsys.XTurn.Auth.Client.create_user(
-            params[:namespace] || "",
-            params[:peer_id] || ""
-          )
+      p = conn.params
 
-        json(conn, %{status: :ok, username: u, password: p})
+      if missing_credentials?(p) do
+        {:ok, u, pass} =
+          Xirsys.XTurn.Auth.Client.create_user(param(p, :namespace) || "", param(p, :peer_id) || "")
+
+        json(conn, %{status: :ok, username: u, password: pass})
       else
-        {:ok, u, p} =
+        {:ok, u, pass} =
           Xirsys.XTurn.Auth.Client.add_user(
-            params[:username],
-            params[:password],
-            params[:namespace] || "",
-            params[:peer_id] || ""
+            param(p, :username),
+            param(p, :password),
+            param(p, :namespace) || "",
+            param(p, :peer_id) || ""
           )
 
-        json(conn, %{status: :ok, username: u, password: p})
+        json(conn, %{status: :ok, username: u, password: pass})
       end
     end
+
+    desc("Mint TURN REST API credentials (shared-secret / TTL)")
+
+    get "rest" do
+      case shared_secret_config() do
+        {:ok, secret, default_ttl} ->
+          ttl = parse_ttl(param(conn.params, :ttl), default_ttl)
+          user_id = param(conn.params, :username) || "test-user"
+          {username, password} = Xirsys.XTurn.Auth.SharedSecret.generate(user_id, ttl, secret)
+
+          json(conn, %{
+            status: :ok,
+            username: username,
+            password: password,
+            ttl: ttl,
+            uris: rest_uris()
+          })
+
+        {:error, :disabled} ->
+          conn
+          |> put_status(503)
+          |> json(%{status: :error, message: "shared-secret authentication is not enabled"})
+      end
+    end
+  end
+
+  defp shared_secret_config do
+    cfg = Application.get_env(:xturn, :shared_secret, [])
+
+    if Keyword.get(cfg, :enabled) == true and is_binary(Keyword.get(cfg, :secret)) and
+         Keyword.get(cfg, :secret) != "" do
+      {:ok, Keyword.get(cfg, :secret), Keyword.get(cfg, :default_ttl_seconds, 86_400)}
+    else
+      {:error, :disabled}
+    end
+  end
+
+  defp missing_credentials?(params) do
+    blank?(param(params, :username)) or blank?(param(params, :password))
+  end
+
+  defp param(params, key) when is_map(params) do
+    Map.get(params, key) || Map.get(params, to_string(key))
+  end
+
+  defp parse_ttl(n, _default) when is_integer(n) and n > 0, do: n
+
+  defp parse_ttl(s, default) when is_binary(s) do
+    case Integer.parse(s) do
+      {n, ""} when n > 0 -> n
+      _ -> default
+    end
+  end
+
+  defp parse_ttl(_, default), do: default
+
+  defp blank?(nil), do: true
+  defp blank?(""), do: true
+  defp blank?(_), do: false
+
+  defp rest_uris do
+    secure? = ListenConfig.certs_available?()
+
+    for ip <- rest_server_ips(),
+        {scheme, port, transport} <- rest_uri_variants(secure?) do
+      "#{scheme}:#{format_rest_host(ip)}:#{port}?transport=#{transport}"
+    end
+  end
+
+  defp rest_server_ips do
+    []
+    |> maybe_add_ip(Application.get_env(:xturn, :server_ip))
+    |> maybe_add_ip(Application.get_env(:xturn, :server_ip6))
+  end
+
+  defp maybe_add_ip(ips, ip) when is_tuple(ip), do: ips ++ [ip]
+  defp maybe_add_ip(ips, _), do: ips
+
+  defp rest_uri_variants(true) do
+    turn_port = ListenConfig.turn_port()
+    turns_port = ListenConfig.turns_port()
+
+    [
+      {"turn", turn_port, "udp"},
+      {"turn", turn_port, "tcp"},
+      {"turns", turns_port, "tcp"}
+    ]
+  end
+
+  defp rest_uri_variants(false) do
+    turn_port = ListenConfig.turn_port()
+
+    [
+      {"turn", turn_port, "udp"},
+      {"turn", turn_port, "tcp"}
+    ]
+  end
+
+  defp format_rest_host({a, b, c, d}), do: "#{a}.#{b}.#{c}.#{d}"
+
+  defp format_rest_host({_, _, _, _, _, _, _, _} = ip) do
+    ip
+    |> :inet.ntoa()
+    |> to_string()
+    |> String.downcase()
+    |> then(&"[#{&1}]")
   end
 end

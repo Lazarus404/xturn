@@ -1,7 +1,14 @@
 /_build
 /cover
 /deps
+/doc
 /certs
 /rel
+/log
 erl_crash.dump
 *.ez
+*.tar
+.DS_Store
+
+/log.txt
+/tmp

@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,16 +30,42 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.XTurn.Auth.Supervisor do
+  @moduledoc """
+  OTP supervisor for TURN authentication services.
+
+  ## What problem this solves
+
+  Nonce tracking and credential storage run in dedicated processes that must
+  restart independently without taking down the relay. This supervisor boots
+  `Auth.NonceStore` and `Auth.Client` under a `:one_for_one` tree.
+
+  Internal: started from the application supervision tree, not configured
+  directly by operators.
+
+  ## RFCs
+
+  - [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) (long-term credentials,
+    NONCE, MESSAGE-INTEGRITY)
+  - [RFC 8656](https://www.rfc-editor.org/rfc/rfc8656) (TURN authentication
+    requirements, stale nonce handling)
+  """
   use Supervisor
   require Logger
 
-  def start_link do
+  @doc "Starts the auth supervisor."
+  def start_link(_opts \\ []) do
     Supervisor.start_link(__MODULE__, :ok)
   end
 
+  @doc false
   def init(:ok) do
     Logger.info("starting auth client")
-    children = [worker(Xirsys.XTurn.Auth.Client, [])]
-    supervise(children, strategy: :one_for_one)
+
+    children = [
+      %{id: Xirsys.XTurn.Auth.NonceStore, start: {Xirsys.XTurn.Auth.NonceStore, :start_link, []}},
+      %{id: Xirsys.XTurn.Auth.Client, start: {Xirsys.XTurn.Auth.Client, :start_link, []}}
+    ]
+
+    Supervisor.init(children, strategy: :one_for_one)
   end
 end

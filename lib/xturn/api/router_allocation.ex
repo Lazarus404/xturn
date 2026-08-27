@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,6 +30,21 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.API.Router.Allocation do
+  @moduledoc """
+  Operator REST routes under `/allocation` for allocation introspection.
+
+  ## What problem this solves
+
+  Monitoring and capacity planning need a lightweight view of how many TURN
+  allocations are active without parsing logs or attaching a metrics agent.
+  `GET /allocation` returns the current count from `Allocate.Client.count/0`.
+
+  ## RFCs
+
+  - [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) (TURN allocations counted)
+  - [RFC 8656](https://www.rfc-editor.org/rfc/rfc8656) (updated TURN allocation
+    model)
+  """
   use Maru.Router
 
   namespace :allocation do

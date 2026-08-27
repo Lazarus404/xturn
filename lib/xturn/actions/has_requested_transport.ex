@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,19 +30,43 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.XTurn.Actions.HasRequestedTransport do
-  @doc """
-  Determines if a peer is assigned to a given transport type.
-  Fixed to UDP as per TURN specification.
+  @moduledoc """
+  Guard that validates REQUESTED-TRANSPORT on **Allocate**.
+
+  ## What problem this solves
+
+  Allocate must declare whether the relay uses UDP or TCP. This step rejects
+  missing, unsupported, or mismatched transport requests (for example TCP
+  relay on a UDP socket) before any relay resources are opened.
+
+  First step in the `@allocation` pipeline.
+
+  ## Internal
+
+  Pipeline action only; not part of the public application API.
+
+  ## RFCs
+
+  * [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) - REQUESTED-TRANSPORT (pt.6.2)
+  * [RFC 8656](https://datatracker.ietf.org/doc/html/rfc8656) - TCP relay constraints
   """
   require Logger
-  alias Xirsys.Sockets.Conn
-  alias XMediaLib.Stun
+  alias XSockets.Transport.{TCP, TLS}
+  alias Xirsys.XTurn.Conn
 
   @udp_proto <<17, 0, 0, 0>>
+  @tcp_proto <<6, 0, 0, 0>>
 
-  def process(%Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
+  @doc """
+  Ensures REQUESTED-TRANSPORT is present and UDP/TCP is allowed on this socket.
+
+  Passes conn through on success; returns conn with 400 or 442 error response
+  when the attribute is missing, unsupported, or TCP is requested on a datagram socket.
+  """
+  def process(%Conn{decoded_message: %{attrs: attrs}, client_socket: client_socket} = conn) do
     with true <- Map.has_key?(attrs, :requested_transport),
-         @udp_proto <- Map.get(attrs, :requested_transport) do
+         proto when proto in [@udp_proto, @tcp_proto] <- Map.get(attrs, :requested_transport),
+         :ok <- tcp_control_allowed?(proto, client_socket) do
       conn
     else
       false ->
@@ -64,4 +88,13 @@ defmodule Xirsys.XTurn.Actions.HasRequestedTransport do
         Conn.response(conn, 442, "Unsupported Transport Protocol")
     end
   end
+
+  # RFC 6062 / RFC 7350: TCP allocations only on TCP/TLS control (not UDP/DTLS).
+  defp tcp_control_allowed?(@tcp_proto, %{transport: mod})
+       when mod in [TCP, TLS],
+       do: :ok
+
+  defp tcp_control_allowed?(@tcp_proto, _client_socket), do: {:error, :unsupported}
+
+  defp tcp_control_allowed?(_, _client_socket), do: :ok
 end

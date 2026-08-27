@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -31,85 +31,72 @@
 
 defmodule Xirsys.XTurn.Channels.Store do
   @moduledoc """
+  ETS-backed store of TURN channel bindings (client -> peer direction).
 
+  ## What problem this solves
+
+  When a client sends ChannelData, the server must map the channel number to
+  the bound peer quickly. This table stores `{allocation 5-tuple, channel_number}
+  -> {worker pid, peer address, ...}` for O(1) lookup on the media path.
+
+  Keys normalize the allocation `:proto` field so lookups match regardless of
+  UDP vs TCP on the control socket. Peer -> client relay uses `RelayIngress`
+  and `Allocate.Store.lookup_sock/1` instead.
+
+  ## Internal
+
+  Runtime infrastructure; populated by allocation workers on ChannelBind and
+  read by `DataPlane` / `Actions.ChannelData`.
+
+  ## RFCs
+
+  * [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) - channels and ChannelBind (pt.11)
   """
-  # import Exts
-  require Logger
-
   @vsn "0"
 
   alias Xirsys.XTurn.Tuple5, as: T5
 
+  @doc "Creates the public channel-bindings ETS table."
   def init(),
     do: Exts.new(__MODULE__, access: :public)
 
-  def insert(
-        cid,
-        pid,
-        {{_, _, _, _}, _port} = peer_address,
-        %T5{} = tuple5,
-        socket \\ nil,
-        channel_cache \\ nil
-      ),
-      do:
-        Exts.write(
-          __MODULE__,
-          {cid, {pid, peer_address, T5.to_map(tuple5), socket, channel_cache}}
-        )
+  @doc "Registers (or overwrites) the channel binding for `{tuple5, cid}`."
+  def insert(cid, pid, {_ip, _port} = peer_address, %T5{} = tuple5, socket \\ nil, relayed_address \\ nil)
+      when is_integer(cid) do
+    :ets.insert(__MODULE__, {{normalize(tuple5), cid}, {pid, peer_address, socket, relayed_address}})
+    :ok
+  end
 
-  def lookup(cid) when is_integer(cid) do
-    case Exts.read(__MODULE__, cid) do
-      [{_cid, {pid, _, _, _, _}}] -> {:ok, pid}
-      _ -> {:error, :not_found}
+  @doc """
+  O(1) lookup of the channel `cid` bound by the allocation identified by
+  `tuple5`. Returns `{:ok, {pid, peer_address, socket}}` or
+  `{:error, :not_found}`.
+  """
+  def lookup(cid, tuple5) when is_integer(cid) do
+    case :ets.lookup(__MODULE__, {normalize(tuple5), cid}) do
+      [{_key, {pid, peer_address, socket, relayed_address}}] ->
+        {:ok, {pid, peer_address, socket, relayed_address}}
+
+      [] ->
+        {:error, :not_found}
     end
   end
 
-  def lookup([{:ca, _}, {:cp, _}, {:sa, _}, {:sp, _}, {:proto, _}] = tuple5),
-    do: match({:_, {:"$1", :"$2", tuple5, :"$3", :"$4"}})
+  @doc "Returns `true` when channel `cid` is bound on the allocation identified by `tuple5`."
+  def exists?(cid, tuple5), do: match?({:ok, _}, lookup(cid, tuple5))
 
-  def lookup({{i1, i2, i3, i4}, _port} = peer_address)
-      when is_integer(i1) and i1 < 256 and is_integer(i2) and i2 < 256 and is_integer(i3) and
-             i3 < 256 and is_integer(i4) and i4 < 256,
-      do: match({:"$1", {:"$2", peer_address, :"$3", :"$4", :"$5"}})
+  @doc "Deletes a single channel binding, scoped to the allocation identified by `tuple5`."
+  def delete(cid, tuple5) when is_integer(cid),
+    do: :ets.delete(__MODULE__, {normalize(tuple5), cid})
 
-  def lookup(
-        {{{i1, i2, i3, i4}, _port} = peer_address,
-         [{:ca, _}, {:cp, _}, {:sa, _}, {:sp, _}, {:proto, _}] = tuple5}
-      )
-      when is_integer(i1) and i1 < 256 and is_integer(i2) and i2 < 256 and is_integer(i3) and
-             i3 < 256 and is_integer(i4) and i4 < 256,
-      do: match({:"$1", {:"$2", peer_address, tuple5, :"$3", :"$4"}})
+  @doc "Deletes every channel binding belonging to a given allocation."
+  def delete_all(tuple5),
+    do: :ets.match_delete(__MODULE__, {{normalize(tuple5), :_}, :_})
 
-  def lookup({cid, [{:ca, _}, {:cp, _}, {:sa, _}, {:sp, _}, {:proto, _}] = tuple5})
-      when is_integer(cid),
-      do: match({cid, {:"$1", :"$2", tuple5, :"$3", :"$4"}})
+  # Reduces any tuple5 (struct or Tuple5.to_map/1 list, whatever protocol it
+  # carries) down to the canonical key shape used throughout this table.
+  defp normalize(%T5{} = tuple5), do: normalize(T5.to_map(tuple5))
 
-  def lookup(
-        {cid, {{i1, i2, i3, i4}, _port} = peer_address,
-         [{:ca, _}, {:cp, _}, {:sa, _}, {:sp, _}, {:proto, _}] = tuple5}
-      )
-      when is_integer(i1) and i1 < 256 and is_integer(i2) and i2 < 256 and is_integer(i3) and
-             i3 < 256 and is_integer(i4) and i4 < 256,
-      do: match({cid, {:"$1", peer_address, tuple5, :"$2", :"$3"}})
-
-  def exists(criteria) do
-    case lookup(criteria) do
-      {:ok, _} -> true
-      _ -> false
-    end
-  end
-
-  def delete(key),
-    do: :ets.delete(__MODULE__, key)
-
-  defp match(criteria) do
-    lookup = Exts.match(__MODULE__, criteria)
-    maybe_values(lookup)
-  end
-
-  defp maybe_values(%{values: clients}) when is_list(clients) and length(clients) > 0,
-    do: {:ok, clients}
-
-  defp maybe_values(_),
-    do: {:error, :not_found}
+  defp normalize([{:ca, ca}, {:cp, cp}, {:sa, sa}, {:sp, sp}, {:proto, _}]),
+    do: [{:ca, ca}, {:cp, cp}, {:sa, sa}, {:sp, sp}, {:proto, :_}]
 end

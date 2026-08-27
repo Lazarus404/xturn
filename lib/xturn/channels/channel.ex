@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -31,9 +31,54 @@
 
 defmodule Xirsys.XTurn.Channels.Channel do
   @moduledoc """
-  TURN channel state object
+  In-memory TURN channel binding for one peer on an allocation.
+
+  ## What problem this solves
+
+  Each ChannelBind creates state the allocation worker must refresh before
+  expiry. This struct holds the channel number, owning 5-tuple, peer address,
+  and the refresh timer reference.
+
+  ## Internal
+
+  Used inside allocation workers; not part of the public application API.
+
+  ## RFCs
+
+  * [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) - channel bindings and refresh (pt.11)
   """
+
+  @typedoc "Channel number in the range 0x4000-0x7FFE, or nil before bind."
+  @type channel_id :: non_neg_integer() | nil
+
+  @typedoc "Allocation 5-tuple map used as the binding scope."
+  @type tuple5 :: map() | nil
+
+  @typedoc "Bound peer `{ip, port}`."
+  @type peer_address :: {:inet.ip_address(), pos_integer()} | nil
+
+  @typedoc "Reference for the channel refresh timer, or nil."
+  @type timer_ref :: reference() | nil
+
+  @typedoc """
+  Channel binding held by an allocation worker.
+
+  ## Fields
+
+  * `:id` - channel number (`0x4000`-`0x7FFE`), or `nil` before bind
+  * `:tuple5` - owning allocation 5-tuple map, or `nil`
+  * `:peer_address` - bound peer `{ip, port}`, or `nil`
+  * `:timer` - refresh timer reference, or `nil`
+  """
+  @type t :: %__MODULE__{
+          id: channel_id(),
+          tuple5: tuple5(),
+          peer_address: peer_address(),
+          timer: timer_ref()
+        }
+
   @vsn "0"
+
   defstruct id: nil,
             tuple5: nil,
             peer_address: nil,

@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -31,21 +31,70 @@
 
 defmodule Xirsys.XTurn do
   @moduledoc """
-  Application stub, used to parent TURN connections supervisor
+  XTurn is a STUN/TURN relay server for real-time media (WebRTC, VoIP, and similar).
+
+  ## What problem this solves
+
+  Many devices sit behind NAT or firewalls and cannot receive inbound UDP/TCP
+  directly. Interactive Connectivity Establishment (ICE) lets two peers find
+  working paths; when direct paths fail, a TURN relay forwards media through a
+  server the client can reach. STUN discovers reflexive addresses and tests NAT
+  behavior; TURN allocates relay ports, permissions, and channels so peers can
+  exchange packets via the server.
+
+  XTurn implements the server side: it listens for STUN/TURN, authenticates
+  clients, opens relay sockets, and forwards media on a fast path separate from
+  control requests. STUN message encoding and decoding use
+  [xmedialib](https://github.com/Lazarus404/xmedialib) (`XMediaLib.Stun`).
+
+  ## Main modules
+
+  - `Xirsys.XTurn` -- OTP application entry; starts stores and `RootSupervisor`
+  - `Xirsys.XTurn.RootSupervisor` / `Supervisor` -- listener and worker tree
+  - `Xirsys.XTurn.Pipeline` -- control-plane STUN/TURN request dispatch
+  - `Xirsys.XTurn.DataPlane` -- relay media fast path (ChannelData, Send)
+  - `Xirsys.XTurn.Conn` / `Response` -- per-request context for action chains
+  - `Xirsys.XTurn.Binding` -- STUN Binding (address discovery)
+  - `Xirsys.XTurn.Allocate.Client` / `Store` -- per-allocation GenServer and index
+  - `Xirsys.XTurn.ClientWorker.Pool` -- sharded control workers
+  - `Xirsys.XTurn.ListenConfig` / `ListenRegistry` -- bind ports and RFC 5780 sockets
+  - `Xirsys.XTurn.DualIp` -- dual-homed NAT behavior discovery helpers
+
+  ## RFCs
+
+  - [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) / [RFC 5389](https://www.rfc-editor.org/rfc/rfc5389) (STUN)
+  - [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) (TURN)
+  - [RFC 8656](https://www.rfc-editor.org/rfc/rfc8656) (TURN extensions: address families, even-port)
+  - [RFC 5780](https://www.rfc-editor.org/rfc/rfc5780) (NAT behavior discovery: CHANGE-REQUEST, OTHER-ADDRESS)
+  - [RFC 6062](https://www.rfc-editor.org/rfc/rfc6062) (TURN over TCP / TCP relay)
+  - [RFC 7635](https://www.rfc-editor.org/rfc/rfc7635) (TURN REST API; optional access tokens)
+  - [RFC 3489](https://www.rfc-editor.org/rfc/rfc3489) (classic STUN interop when `:rfc3489_compat` is enabled)
   """
   use Application
 
+  @doc """
+  OTP application callback.
+
+  Initialises ETS stores (allocations, channels, permissions, auth, quota, plugins),
+  ensures `ListenRegistry`, rewrites `:listen` ports via `ListenConfig`, and
+  starts `RootSupervisor` with the resolved listener list.
+  """
   def start(_type, _args) do
     Xirsys.XTurn.Allocate.Store.init()
     Xirsys.XTurn.Channels.Store.init()
+    Xirsys.XTurn.Permissions.Store.init()
+    Xirsys.XTurn.Auth.Table.init()
+    Xirsys.XTurn.Allocate.Bytes.init()
+    Xirsys.XTurn.Allocate.Quota.init()
+    Xirsys.XTurn.Plugin.Table.init()
+    Xirsys.XTurn.ReservationStore.init()
+    :ok = Xirsys.XTurn.ListenRegistry.ensure!()
 
-    Xirsys.XTurn.Supervisor.start_link(
-      Application.get_env(:xturn, :listen),
-      Xirsys.XTurn.Commands
-    )
-  end
+    listen =
+      Application.get_env(:xturn, :listen, [])
+      |> Xirsys.XTurn.ListenConfig.rewrite_ports()
 
-  def main(argv) do
-    main(argv)
+    Application.put_env(:xturn, :listen, listen)
+    Xirsys.XTurn.RootSupervisor.start_link(listen)
   end
 end

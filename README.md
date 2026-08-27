@@ -1,130 +1,273 @@
-XTurn - Xirsys TURN Server in Elixir
-=====
+# XTurn
 
-This is an implementation of a TURN server in Elixir (based on the xstun server project).  It was originally written in Erlang and ported in 2014 when we migrated our other code.  It's never been in production and, indeed, needs more work for that.  However, it's a great little personal project and fun to work with.  It works nicely with WebRTC.
+An Elixir **TURN / STUN** server for WebRTC.
 
-Supported Features
-===
+If you have used `RTCPeerConnection` with `iceServers`, you have already talked to
+something like this. When two browsers cannot send media directly (home routers,
+corporate firewalls, mobile CGNAT), ICE asks a TURN server to **relay** packets.
+XTurn is that relay -- plus STUN Binding for "what is my public address?"
 
-- TCP, UDP, TLS and DTLS supported
-- Full TURN RFC5766 support (except rotating nonce)
-- Full STUN RFC3489 support
-- Simple user / pass storage with Web API interface
-- Channel Binding / Data IS supported!
-- WebRTC Data Channels ARE supported!
+Home: [https://github.com/Lazarus404/xturn](https://github.com/Lazarus404/xturn)
 
-Setup
-===
-Open the `config.exs` file in `config`.  All options are there.
+Hex: [https://hex.pm/packages/xturn](https://hex.pm/packages/xturn)
 
-Logging
----
-Logging sloooooows the server down.  For production quality (faster than Google's), drop the Logging level to `:error` or `:info`.  Keeping at `:debug` is fine for development, but will provide a degragation of service.
+## Installation
 
-    config :logger,
-      level: :debug,
-      compile_time_purge_level: :debug
+Add to your `mix.exs` dependencies:
 
-Ports
----
-The listening ports should be set, next.  Standard ports are already set, but it can oftimes be beneficial to open on 80 and 443, too.  Make sure to specify `:secure` on known secure ports, which will enable SSL.
+```elixir
+def deps do
+  [
+    {:xturn, "~> 2.0"}
+  ]
+end
+```
 
-    config :xturn,
-      authentication: %{required: true},
-      permissions: %{required: false},
-      realm: "xirsys.com",
-      listen: [
-                {:udp, '0.0.0.0', 3478},
-                {:tcp, '0.0.0.0', 3478},
-                {:udp, '0.0.0.0', 5349, :secure},
-                {:tcp, '0.0.0.0', 5349, :secure}
-              ],
-      server_type: "turn",
-      server_id: "turn.myserver.com",
-      server_ip: {127, 0, 0, 1},
-      server_local_ip: {0, 0, 0, 0},
-      certs: [
-               {:certfile, "certs/server.crt"},
-               {:keyfile, "certs/server.key"}
-             ]
+Then configure listeners and auth in your app config (see Setup below). For a
+standalone server checkout, clone the repo and run `mix deps.get` then
+`mix run --no-halt`.
 
-*authentication*: specifying required as `true` will prevent connections without a valid user and password in the user store
+Monorepo / local `xsockets` checkout:
 
-*permissions*: TURN usually requires a `create permissions` call.  Setting requireed to false will allow connections without permissions being set.
+```bash
+mix deps.get
+```
 
-*server_ip*: this is the public IP of your server.  Not all server setups make this aware to the app, so it's necessary to set this manually (for now).
+Set `XTURN_SERVER_IP` (and optional certs under `certs/`) before binding on a
+real NIC. Defaults in `config/config.exs` advertise `127.0.0.1`.
 
-*server_local_ip*: this is the internal IP to bind sockets to.  Again, this may be temporary.  You still need to set the IP in the individual socket listeners, too.
+## What problem this solves
 
-Note that `server_type` is a Xirsys thing and can be ignored.
+WebRTC wants peer-to-peer. The internet often says no.
 
-Maru
----
+- **STUN** answers: "from the outside, you look like this IP:port"
+- **TURN** says: "I will hold a relay address for you and forward packets to your peer"
 
-Maru is an Elixir HTTP server library.  This TURN server provide some lightweight API features for creating user credentials and viewing throughput stats.  This will improve with time (it's just for testing atm).
+XTurn speaks those protocols on UDP, TCP, TLS, and DTLS so browsers and native
+clients can keep calls working when host / server-reflexive candidates fail.
 
-    config :maru, Xirsys.API,
-      http: [port: 8880]
+You configure listeners and auth in Elixir config. Clients still use normal
+WebRTC APIs (`iceServers: [{ urls: "turn:...", username, credential }]`).
 
-Change the port number to access the API from a different port.
+## RFCs (the specs we implement)
 
-Future Plans
-===
+You do not need to read these to run the server. They are here when you want the
+official wording:
 
-- Create a rotating nonce
-- Get a decent user credential store working with decent timeout capability (it's a little limited at the moment).
-- Get RTP and RTCP working with a new MCU or SFU functionality
-- Implement stream recording to file
-- Implement third party streaming server connectivity
-- Full support for IPv6
-- TCP Allocations (connect command)
+- [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) -- STUN (Binding, MESSAGE-INTEGRITY, FINGERPRINT)
+- [RFC 5389](https://www.rfc-editor.org/rfc/rfc5389) -- older STUN (interop)
+- [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) -- classic TURN
+- [RFC 8656](https://www.rfc-editor.org/rfc/rfc8656) -- updated TURN
+- [RFC 5780](https://www.rfc-editor.org/rfc/rfc5780) -- optional NAT behaviour discovery
+- [RFC 6062](https://www.rfc-editor.org/rfc/rfc6062) -- TURN over TCP (ConnectionBind)
+- [RFC 7635](https://www.rfc-editor.org/rfc/rfc7635) -- optional third-party ACCESS-TOKEN auth
+- [RFC 3489](https://www.rfc-editor.org/rfc/rfc3489) -- optional classic STUN Binding quirks
 
-Changelog
-===
-30-10-2018 - Extract actions to module based pipeline
+## What you get
 
-12-07-2018 - Externalised XMediaLib as a separate library
+- UDP, TCP, TLS, and DTLS listeners
+- Full TURN Allocate / Refresh / permissions / ChannelBind / ChannelData
+- STUN Binding for ICE (with long-term auth, FINGERPRINT, MESSAGE-INTEGRITY)
+- Optional RFC 5780 Binding helpers when you configure a second IP
+- Optional RFC 3489-style UDP Binding interop (`rfc3489_compat`)
+- Simple username/password store plus a small HTTP API
+- Coturn-compatible TURN REST (shared-secret TTL usernames)
+- Channel Binding and Data -- yes, the hot media path is real
+- Fine with WebRTC data channels (the TURN relay does not care what you tunnel)
 
-04-07-2018 - Aside from some cleanup, client calls were short-cicuited through direct passing of the client socket ref, rather than the GenServer pid
+How sockets and framing work underneath lives in
+[xsockets](https://hex.pm/packages/xsockets). How the TURN pieces fit
+together is in [ARCHITECTURE.md](ARCHITECTURE.md). Plugin hooks:
+[PLUGIN.md](PLUGIN.md).
 
-02-07-2018 - Get working with test.webrtc.org
+## Setup
 
-26-06-2018 - Add DTLS support
+Open `config/config.exs`. Almost everything lives there (and in `config/runtime.exs`
+for env overrides).
 
-21-09-2014 - Convert to Elixir
+### Logging
 
-14-12-2013 - Initial working implementation in Erlang
+Debug logging is great while you learn. It is expensive at scale.
 
-Contact
-===
-For questions or suggestions, please email lee@xirsys.com or experts@xirsys.com
+For production, set the logger to `:info` or `:error`. Leave `:debug` for local
+dev only.
 
-Copyright
-===
+```elixir
+config :logger,
+  level: :debug,
+  compile_time_purge_level: :debug
+```
 
-Copyright (c) 2013 - 2018 Xirsys LLC
+### Ports
 
-All rights reserved.
+Default idea (when cert files exist):
 
-Redistribution and use in source and binary forms, with or without modification,
-are permitted provided that the following conditions are met:
+- **3478** -- plain STUN/TURN (UDP + TCP, IPv4 + IPv6)
+- **5349** -- secure TURNS (TLS/DTLS)
 
-* Redistributions of source code must retain the above copyright notice, this
-list of conditions and the following disclaimer.
-* Redistributions in binary form must reproduce the above copyright notice,
-this list of conditions and the following disclaimer in the documentation
-and/or other materials provided with the distribution.
-* Neither the name of the authors nor the names of its contributors
-may be used to endorse or promote products derived from this software
-without specific prior written permission.
+Port **443** is never hardcoded. To serve TURNS on 80 or 443, set
+`XTURN_TURNS_PORT` at runtime.
 
-THIS SOFTWARE IS PROVIDED BY THE REGENTS AND CONTRIBUTORS ''AS IS'' AND ANY
-EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
-DISCLAIMED. IN NO EVENT SHALL THE REGENTS OR CONTRIBUTORS BE LIABLE FOR ANY
-DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES
-(INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES;
-LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON
-ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
-(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
-SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+```elixir
+config :xturn,
+  authentication: %{required: true},
+  permissions: %{required: false},
+  realm: "xirsys.com",
+  listen: [
+    {:udp, ~c"0.0.0.0", 3478},
+    {:tcp, ~c"0.0.0.0", 3478},
+    {:udp, ~c"::", 3478},
+    {:tcp, ~c"::", 3478},
+    {:udp, ~c"0.0.0.0", 5349, :secure},
+    {:tcp, ~c"0.0.0.0", 5349, :secure},
+    {:udp, ~c"::", 5349, :secure},
+    {:tcp, ~c"::", 5349, :secure}
+  ],
+  server_ip: {127, 0, 0, 1},
+  server_local_ip: {0, 0, 0, 0},
+  certs: [
+    certfile: "certs/server.crt",
+    keyfile: "certs/server.key"
+  ]
+```
+
+Env knobs:
+
+- `XTURN_STUN_PORT` (default `3478`) -- plain port
+- `XTURN_TURNS_PORT` (default `5349`) -- secure port
+- `XTURN_SERVER_IP` / `XTURN_SERVER_IP6` -- extra listen addresses at runtime
+
+See `config/runtime.exs` and `Xirsys.XTurn.ListenConfig`.
+
+Config cheat sheet:
+
+- **`authentication.required: true`** -- reject clients without a valid user/password
+- **`permissions.required: false`** -- TURN normally needs CreatePermission; set
+  false only if you knowingly want a looser lab
+- **`server_ip`** -- the public IP clients should see in candidates
+- **`server_local_ip`** -- the NIC you bind sockets to (you still set each listener)
+
+### Authentication (think "how ICE logs in")
+
+Browsers and coturn-style stacks use two common patterns. XTurn supports both.
+
+**Long-term credentials** -- a username/password you store (via `POST /auth` or
+`Auth.Client.add_user/4`). On first try the server answers `401` with a nonce;
+the client retries with `MESSAGE-INTEGRITY` using
+`MD5(username:realm:password)` as the key. Nonces rotate and expire after
+`nonce_max_age_ms` (default one hour). An expired nonce becomes `438 Stale Nonce`.
+
+**Shared-secret / TTL credentials (TURN REST)** -- same idea as coturn
+`use-auth-secret`. **Off by default.** Turn it on and mint credentials with
+`GET /auth/rest?username=<id>&ttl=<seconds>` (returns **503** while disabled):
+
+```elixir
+config :xturn,
+  shared_secret: [
+    enabled: true,
+    secret: "your-shared-secret",
+    default_ttl_seconds: 86_400
+  ]
+```
+
+Usernames look like `"<expiry-unix>:<user-id>"`. Passwords are
+`Base64(HMAC-SHA1(secret, username))`. If a username matches that timestamp
+shape and shared secret is enabled, we verify that way; otherwise we use the
+long-term store.
+
+**Allocation quota** -- optional `allocation_quota` caps how many allocations
+one username can hold at once (RFC 8656 -> **486**). Unset by default so a
+laptop lab is not capped.
+
+**RFC 7635 third-party auth** -- optional ACCESS-TOKEN path. Long-term + SHA-256
+STUN integrity stays the default.
+
+**Short-term credentials** -- not implemented for TURN (and RFC 8656 says TURN
+should use long-term). Plain STUN Binding can skip auth in our pipeline. Coturn
+does not do short-term TURN either.
+
+### TURNS certificates (for real browsers)
+
+Production `turns:` / DTLS needs a publicly trusted cert for the hostname clients
+dial (for example `turn.example.com`):
+
+```elixir
+config :xturn,
+  certs: [
+    certfile: "/etc/xturn/certs/turn.example.com.crt",
+    keyfile: "/etc/xturn/certs/turn.example.com.key"
+  ],
+  cert_watch_interval_ms: 60_000
+```
+
+Issue and renew certs **outside** XTurn with [lego](https://github.com/go-acme/lego)
+and DNS-01. XTurn polls the PEM paths and reloads secure listeners when files
+change.
+
+#### Obtain and renew (lego + DNS-01)
+
+Start with Let's Encrypt. Switching CA later is mostly a `--server` flag change;
+XTurn does not care which CA signed the files.
+
+```bash
+lego --email ops@example.com \
+     --domains turn.example.com \
+     --dns cloudflare \
+     --path /etc/xturn/lego \
+     renew --days 30 \
+     --renew-hook 'XTURN_CERT_DOMAIN=turn.example.com /path/to/xturn/scripts/xturn-deploy-certs.sh'
+```
+
+Copy [`scripts/xturn-deploy-certs.sh`](scripts/xturn-deploy-certs.sh) onto the host
+and set `XTURN_CERT_DOMAIN` in the hook. The script installs PEMs under
+`/etc/xturn/certs/` (mode `0640`). No special signal is required; the cert
+watcher notices within one poll interval.
+
+For an immediate reload, set `XTURN_SERVICE` to your systemd unit name so the
+hook can send `SIGHUP` (XTurn maps that to `Certs.reload/0`).
+
+Check the chain looks complete:
+
+```bash
+openssl crl2pkcs7 -nocrl -certfile /etc/xturn/certs/turn.example.com.crt \
+  | openssl pkcs7 -print_certs -noout
+```
+
+Expect two or more certificates listed.
+
+#### Native clients
+
+Browsers use the OS trust store. Some native WebRTC stacks (Flutter, React Native,
+Unreal) ship a stricter root list and have rejected some Let's Encrypt chains in
+the past. If you ship native apps, test `turns:` early; ZeroSSL or Google Trust
+Services are common fallbacks if you see "Unknown CA".
+
+#### Local development
+
+Self-signed files under `certs/` are enough (see `config/test.exs`). No lego
+required.
+
+## HTTP API (Maru)
+
+[Maru](https://github.com/elixir-maru/maru) is a small Elixir HTTP layer. XTurn
+uses it for operator endpoints: create users, mint TURN REST credentials, peek
+at allocation counts.
+
+```elixir
+config :maru, Xirsys.API,
+  http: [port: 8880]
+```
+
+Change the port if something else already owns 8880.
+
+## Changelog
+
+See [CHANGELOG.md](CHANGELOG.md).
+
+## Contact
+
+Questions or ideas: Jahred at experts@xirsys.com
+
+## License
+
+BSD-3-Clause. See [LICENSE.md](LICENSE.md).

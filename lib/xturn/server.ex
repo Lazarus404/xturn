@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -31,15 +31,31 @@
 
 defmodule Xirsys.XTurn.Server do
   @moduledoc """
-  Provides implementation of STUN application by managing socket
-  messages through use of the STUN protocol module.
+  Placeholder GenServer for OTP supervision compatibility.
+
+  ## What problem this solves
+
+  Older deployments expected a registered `Xirsys.XTurn.Server` process in the
+  supervision tree. The server keeps this empty GenServer so upgrades do not
+  break release scripts; live listeners and request handling run under
+  `RootSupervisor`, `Supervisor`, and `ClientWorker.Pool`.
+
+  ## Internal note
+
+  No operator-facing behavior; retained for tree shape only.
+
+  ## RFCs
+
+  - (none; structural OTP component)
   """
   use GenServer
   @vsn "0"
 
   #####
   # External API
-  def start_link() do
+
+  @doc "Starts the application GenServer registered as `Xirsys.XTurn.Server`."
+  def start_link(_opts \\ []) do
     GenServer.start_link(__MODULE__, [], name: __MODULE__)
   end
 
@@ -47,6 +63,7 @@ defmodule Xirsys.XTurn.Server do
   # OTP functions
   #########################################################################################################################
 
+  @doc false
   def init([]) do
     # {:ok, node_name} = :application.get_env(:node_name)
     # {:ok, node_host} = :application.get_env(:node_host)

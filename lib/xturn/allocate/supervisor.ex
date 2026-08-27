@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,23 +30,59 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.XTurn.Allocate.Supervisor do
-  use Supervisor
-  require Logger
+  @moduledoc """
+  Dynamic supervisor for per-client TURN allocation GenServers.
 
+  ## What problem this solves
+
+  Each successful Allocate spawns a dedicated process for relay state. A
+  `:simple_one_for_one` supervisor with `:temporary` restarts lets allocations
+  start and stop independently without restarting siblings when one client leaves.
+
+  ## Internal note
+
+  Child module is typically `Allocate.Client`.
+
+  ## RFCs
+
+  - [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) (allocation lifetime and teardown)
+  """
+  use Supervisor
+
+  @doc """
+  Starts the allocation supervisor.
+
+  ## Parameters
+
+    * `alloc` - allocation worker module (typically `Allocate.Client`)
+  """
   def start_link(alloc) do
     :supervisor.start_link({:local, __MODULE__}, __MODULE__, alloc)
   end
 
+  @doc """
+  Starts a new allocation worker under this supervisor.
+
+  ## Parameters
+
+    * `id` - allocation transaction id / store key
+    * `listener` - client `%ClientSocket{}`
+    * `tuple5` - client five-tuple
+    * `lifetime` - initial lifetime in seconds
+  """
   def start_child(id, listener, tuple5, lifetime) do
     :supervisor.start_child(__MODULE__, [id, listener, tuple5, lifetime])
   end
 
+  @doc "Terminates an allocation worker pid."
   def terminate_child(child) do
     :supervisor.terminate_child(__MODULE__, child)
   end
 
+  @doc false
   def init(alloc) do
-    tree = [worker(alloc, [], restart: :temporary)]
-    supervise(tree, strategy: :simple_one_for_one)
+    flags = %{strategy: :simple_one_for_one, intensity: 3, period: 5}
+    children = [%{id: alloc, start: {alloc, :start_link, []}, restart: :temporary}]
+    {:ok, {flags, children}}
   end
 end

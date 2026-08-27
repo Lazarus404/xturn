@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,41 +30,53 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.XTurn.Actions.SendIndication do
-  @doc """
-  Sends data to a given peer
-  """
-  require Logger
-  alias Xirsys.XTurn.Allocate.Store
-  alias Xirsys.XTurn.Allocate.Client, as: AllocateClient
-  alias Xirsys.XTurn.Tuple5
-  alias Xirsys.Sockets.Conn
-  alias XMediaLib.Stun
+  @moduledoc """
+  Pipeline action for TURN **Send** indications.
 
-  def process(%Conn{is_control: true}) do
-    Logger.debug("cannot send indications on control connection")
-    false
+  ## What problem this solves
+
+  Before a channel is bound, the client sends application data to a peer using
+  a **Send** indication (STUN-formatted, no response). This action forwards
+  that payload through the relay to the permitted peer.
+
+  Handled in the `@indication` chain; no STUN response is expected.
+
+  ## Internal
+
+  Pipeline action only; also invoked from the media fast path via `DataPlane`.
+  Not part of the public application API.
+
+  ## RFCs
+
+  * [RFC 5766](https://datatracker.ietf.org/doc/html/rfc5766) - Send indication (pt.9)
+  """
+  alias Xirsys.XTurn.DataPlane
+  alias Xirsys.XTurn.Conn
+
+  @doc """
+  Forwards indication payload to the peer via `DataPlane`.
+
+  Returns conn unchanged; skipped (`false`) on the TCP control socket.
+  """
+  def process(%Conn{is_control: true}), do: false
+
+  def process(%Conn{message: message} = conn) do
+    case DataPlane.forward_send(message, meta(conn)) do
+      :ok -> conn
+      :not_found -> conn
+      :drop -> conn
+    end
   end
 
-  def process(%Conn{decoded_message: %Stun{attrs: attrs}} = conn) do
-    Logger.debug("send indication #{inspect(conn.decoded_message)}")
-    tuple5 = Tuple5.to_map(Tuple5.create(conn, :_))
-
-    with true <- Map.has_key?(attrs, :data) and Map.has_key?(attrs, :xor_peer_address),
-         data <- Map.get(attrs, :data),
-         peer_address = {_pip, _port} <- Map.get(attrs, :xor_peer_address),
-         {:ok, [client, {_relay_ip, _relay_port}, socket, permission_cache]} <-
-           Store.lookup(tuple5) do
-      Logger.debug("sending indication to peer")
-      AllocateClient.send_indication(client, peer_address, data, socket, permission_cache)
-      conn
-    else
-      {:error, _} ->
-        Logger.debug("client does not exist #{inspect(tuple5)} (send indication)")
-        false
-
-      _ ->
-        Logger.debug("Required attributes not found during send indication")
-        false
-    end
+  defp meta(%Conn{} = conn) do
+    %{
+      client_ip: conn.client_ip,
+      client_port: conn.client_port,
+      server_ip: conn.server_ip,
+      server_port: conn.server_port,
+      transport: conn.client_socket.transport,
+      socket: conn.client_socket.socket,
+      is_control: conn.is_control
+    }
   end
 end

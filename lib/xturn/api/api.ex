@@ -1,6 +1,6 @@
 ### ----------------------------------------------------------------------
 ###
-### Copyright (c) 2013 - 2018 Lee Sylvester and Xirsys LLC <lee.sylvester@gmail.com>
+### Copyright (c) 2013 - 2026 Jahred Love and Xirsys LLC <experts@xirsys.com>
 ###
 ### All rights reserved.
 ###
@@ -30,13 +30,34 @@
 ### ----------------------------------------------------------------------
 
 defmodule Xirsys.API do
+  @moduledoc """
+  Maru HTTP router for XTurn operator REST endpoints.
+
+  ## What problem this solves
+
+  Operators need HTTP access to provision credentials, mint TURN REST shared-
+  secret usernames, and inspect server state without touching the STUN/TURN
+  wire protocol. This top-level router applies CORS and request body parsing,
+  then mounts the auth and allocation sub-routers.
+
+  Configure the listen port via `config :maru, Xirsys.API, http: [port: ...]`.
+
+  ## RFCs
+
+  - [RFC 5766](https://www.rfc-editor.org/rfc/rfc5766) (TURN service the API
+    provisions credentials for)
+  - [RFC 8489](https://www.rfc-editor.org/rfc/rfc8489) (long-term credentials
+    created via `/auth`)
+  """
   use Maru.Router
 
   before do
+    plug(:cors)
+
     plug(
       Plug.Parsers,
       pass: ["*/*"],
-      json_decoder: Poison,
+      json_decoder: Jason,
       parsers: [:urlencoded, :json, :multipart]
     )
   end
@@ -50,5 +71,23 @@ defmodule Xirsys.API do
     conn
     |> put_status(500)
     |> text("Server Error")
+  end
+
+  defp cors(conn, _opts) do
+    conn =
+      conn
+      |> put_resp_header("access-control-allow-origin", "*")
+      |> put_resp_header("access-control-allow-methods", "GET, POST, OPTIONS")
+      |> put_resp_header("access-control-allow-headers", "content-type")
+
+    # Maru returns 405 for OPTIONS on mounted paths (/auth, /auth/rest, ...) before
+    # any route handler runs. Answer preflight here so the demo (8080 -> 8880) works.
+    if conn.method == "OPTIONS" do
+      conn
+      |> send_resp(204, "")
+      |> halt()
+    else
+      conn
+    end
   end
 end
